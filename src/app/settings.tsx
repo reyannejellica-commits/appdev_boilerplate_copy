@@ -9,6 +9,7 @@ import { Button } from '@/components/Button';
 import { Section } from '@/components/Section';
 import { SmoothPressable } from '@/components/SmoothPressable';
 import { clearAllConversations } from '@/db/conversations';
+import { updateHunterName } from '@/db/hunter';
 import { useSettings } from '@/settings/SettingsContext';
 import type { ThemeMode } from '@/settings/storage';
 import { useTheme, type Theme } from '@/theme';
@@ -19,7 +20,7 @@ const THEME_OPTIONS: { id: ThemeMode; label: string; icon: 'sunny-outline' | 'mo
   { id: 'dark', label: 'Dark', icon: 'moon-outline' },
 ];
 
-/** App-wide (system) settings. Chatbot options live in chat-settings.tsx. */
+/** PeakFit system settings. AI settings live in chat-settings.tsx. */
 export default function SettingsScreen() {
   const theme = useTheme();
   const router = useRouter();
@@ -42,6 +43,12 @@ export default function SettingsScreen() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const saveHunterName = async (name: string) => {
+    const trimmed = name.trim();
+    await update('nickname', trimmed);
+    await updateHunterName(trimmed || 'Hunter');
   };
 
   const backup = () =>
@@ -88,7 +95,7 @@ export default function SettingsScreen() {
   const resetAllData = () =>
     confirmAction(
       'Reset all data?',
-      'This deletes your chat, nickname, settings, API key and the downloaded local model. The app will start again from onboarding.',
+      'This deletes your chat, hunter profile, settings, API key and the downloaded local model. The app will start again from onboarding.',
       'Reset',
       async () => {
         await clearAllConversations();
@@ -105,8 +112,25 @@ export default function SettingsScreen() {
       contentContainerStyle={styles.scroll}
       keyboardShouldPersistTaps="handled"
     >
-      <Section title="Profile" theme={theme}>
-        <Text style={[styles.label, { color: theme.text }]}>Nickname</Text>
+      {/* Header */}
+      <View style={[styles.header, { borderBottomColor: theme.border }]}>
+        <SmoothPressable
+          onPress={() => router.back()}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          style={styles.backBtn}
+        >
+          <Ionicons name="chevron-back" size={22} color={theme.tint} />
+        </SmoothPressable>
+        <View style={styles.headerTitle}>
+          <Text style={[styles.headerText, { color: theme.text }]}>System Settings</Text>
+          <Text style={[styles.headerSub, { color: theme.textSecondary }]}>PeakFit Configuration</Text>
+        </View>
+        <Ionicons name="settings-outline" size={22} color={theme.tint} />
+      </View>
+
+      <Section title="Hunter Profile" theme={theme}>
+        <Text style={[styles.label, { color: theme.textSecondary }]}>Hunter Name</Text>
         <TextInput
           style={[
             styles.input,
@@ -116,20 +140,21 @@ export default function SettingsScreen() {
               color: theme.text,
             },
           ]}
-          accessibilityLabel="Nickname"
+          accessibilityLabel="Hunter Name"
           value={nicknameDraft}
           onChangeText={setNicknameDraft}
-          onBlur={() => update('nickname', nicknameDraft.trim())}
+          onBlur={() => void saveHunterName(nicknameDraft)}
           maxLength={30}
-          placeholder="Your nickname"
+          placeholder="Enter your Hunter name"
           placeholderTextColor={theme.textSecondary}
         />
+        <Text style={[styles.hint, { color: theme.textSecondary }]}>
+          Your name as it appears in the System and on the Status Window.
+        </Text>
       </Section>
 
       <Section title="Appearance" theme={theme}>
-        <View
-          style={styles.segmented}
-        >
+        <View style={styles.segmented}>
           {THEME_OPTIONS.map((o) => {
             const active = settings.theme === o.id;
             return (
@@ -142,7 +167,8 @@ export default function SettingsScreen() {
                 style={[
                   styles.segment,
                   {
-                    backgroundColor: active ? theme.buttonPrimary : theme.buttonSecondary,
+                    backgroundColor: active ? theme.tint : theme.card,
+                    borderColor: active ? theme.tint : theme.border,
                   },
                 ]}
               >
@@ -167,8 +193,8 @@ export default function SettingsScreen() {
 
       <Section title="Data" theme={theme}>
         <Text style={{ color: theme.textSecondary, fontSize: 13 }}>
-          Save your chat and settings to a file, or restore them later. Your
-          Gemini API key and the downloaded local model are not included.
+          Save your chat history and settings to a file, or restore them. API key and local
+          model are not included in the backup.
         </Text>
         <Button label="Back up data" icon="cloud-upload-outline" onPress={backup} disabled={busy} style={{ marginTop: 12 }} />
         <Button label="Restore from backup" icon="cloud-download-outline" variant="secondary" onPress={restore} disabled={busy} style={{ marginTop: 10 }} />
@@ -186,7 +212,7 @@ export default function SettingsScreen() {
       </Section>
 
       <Section title="About" theme={theme}>
-        <Row label="App" value={Constants.expoConfig?.name ?? '-'} theme={theme} />
+        <Row label="App" value={Constants.expoConfig?.name ?? 'PeakFit'} theme={theme} />
         <Row label="Version" value={Constants.expoConfig?.version ?? '-'} theme={theme} />
         <LinkRow
           label="Privacy Policy"
@@ -233,8 +259,22 @@ function LinkRow({
 }
 
 const styles = StyleSheet.create({
-  scroll: { padding: 16, paddingBottom: 48 },
-  label: { fontSize: 15, fontWeight: '600', marginBottom: 6 },
+  scroll: { paddingBottom: 48 },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: 12,
+    marginBottom: 8,
+  },
+  backBtn: { padding: 4 },
+  headerTitle: { flex: 1 },
+  headerText: { fontSize: 18, fontWeight: '700' },
+  headerSub: { fontSize: 12, marginTop: 2 },
+  label: { fontSize: 13, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
+  hint: { fontSize: 12, marginTop: 6 },
   input: {
     borderWidth: 1,
     borderRadius: 10,
@@ -253,6 +293,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     borderRadius: 12,
+    borderWidth: 1,
     minHeight: 48,
     paddingVertical: 8,
   },

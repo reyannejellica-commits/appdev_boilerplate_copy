@@ -8,7 +8,6 @@ import { useTheme } from '@/theme';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
-/** Apple-style tab icon: filled when selected, outline when not. */
 function tabIcon(filled: IconName, outline: IconName) {
   function TabIcon({ color, focused, size }: { color: ColorValue; focused: boolean; size: number }) {
     return <Ionicons name={focused ? filled : outline} size={size} color={color} />;
@@ -21,13 +20,9 @@ export default function TabLayout() {
   const insets = useSafeAreaInsets();
   return (
     <Tabs
-      // Floating pill (Home + empty feature slots) with a separate Chat
-      // button; see src/components/FloatingTabBar.tsx.
       tabBar={(props) => <FloatingTabBar {...props} />}
       screenOptions={{
         headerShown: false,
-        // No header, so keep content below the status bar; leave room at the
-        // bottom so the floating bar doesn't cover the screen's content.
         sceneStyle: {
           backgroundColor: theme.background,
           paddingTop: insets.top,
@@ -37,14 +32,42 @@ export default function TabLayout() {
     >
       <Tabs.Screen
         name="index"
-        options={{ title: 'Home', tabBarIcon: tabIcon('home', 'home-outline') }}
+        options={{
+          title: 'Quest',
+          tabBarIcon: tabIcon('flash', 'flash-outline'),
+        }}
+      />
+      <Tabs.Screen
+        name="cardio"
+        options={{
+          title: 'Cardio',
+          tabBarIcon: tabIcon('walk', 'walk-outline'),
+        }}
+      />
+      <Tabs.Screen
+        name="program"
+        options={{
+          title: 'Program',
+          tabBarIcon: tabIcon('barbell', 'barbell-outline'),
+        }}
+      />
+      <Tabs.Screen
+        name="stats"
+        options={{
+          title: 'Stats',
+          tabBarIcon: tabIcon('stats-chart', 'stats-chart-outline'),
+        }}
       />
       <Tabs.Screen
         name="chat"
         options={{
-          title: 'Chat',
-          sceneStyle: { backgroundColor: theme.background, paddingTop: insets.top, paddingBottom: insets.bottom },
-          tabBarIcon: tabIcon('chatbubble-ellipses', 'chatbubble-ellipses-outline'),
+          title: 'System',
+          sceneStyle: {
+            backgroundColor: theme.background,
+            paddingTop: insets.top,
+            paddingBottom: insets.bottom + TAB_BAR_GAP * 2 + TAB_BAR_HEIGHT,
+          },
+          tabBarIcon: tabIcon('hardware-chip', 'hardware-chip-outline'),
         }}
       />
     </Tabs>

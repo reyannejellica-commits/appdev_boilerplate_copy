@@ -19,7 +19,8 @@ const KEYS = {
 
 const API_KEY_KEY = 'gemini_api_key';
 
-export const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant.';
+export const DEFAULT_SYSTEM_PROMPT =
+  'You are The System, an advanced AI fitness intelligence and personal training coach for PeakFit. You speak with a supportive yet disciplined, motivational tone inspired by the Solo Leveling System. You provide precise, scientific advice on exercise form, progressive overload, workout routines, recovery, and nutrition. Address the user as Hunter and help them level up their physical capabilities.';
 /** 'auto' = pick the best model the API key can use (see pickBestModel). */
 export const DEFAULT_GEMINI_MODEL = 'auto';
 
@@ -42,7 +43,7 @@ export const DEFAULT_SETTINGS: Settings = {
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   nickname: '',
   onboarded: false,
-  theme: 'light',
+  theme: 'dark',
 };
 
 export async function loadSettings(): Promise<Settings> {
@@ -70,7 +71,7 @@ export async function loadSettings(): Promise<Settings> {
     systemPrompt: systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
     nickname: nickname ?? '',
     onboarded: onboarded === 'true',
-    theme: theme === 'dark' ? 'dark' : 'light',
+    theme: theme === 'light' ? 'light' : 'dark',
   };
 }
 
@@ -109,7 +110,6 @@ export async function saveSetting<K extends keyof Settings>(
   }
 }
 
-/** Pause/resume state for an interrupted model download (opaque JSON). */
 /** Erase every saved setting (including the API key). */
 export async function resetSettings(): Promise<void> {
   await Storage.clearAsync();
@@ -120,7 +120,7 @@ export async function resetSettings(): Promise<void> {
 export function buildSystemPrompt(settings: Settings): string {
   const name = settings.nickname.trim();
   return name
-    ? `${settings.systemPrompt}\nThe user's name is ${name}.`.trim()
+    ? `${settings.systemPrompt}\nThe user's name is ${name}. Address the user as Hunter ${name}.`.trim()
     : settings.systemPrompt;
 }
 

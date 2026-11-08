@@ -57,12 +57,12 @@ const id = 'main';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
-/** Starter prompts shown on an empty chat. Edit these for your app. */
+/** Starter prompts shown on an empty chat. PeakFit AI coaching topics. */
 export const SUGGESTIONS: { icon: IconName; label: string; prompt: string }[] = [
-  { icon: 'bulb-outline', label: 'Explain a topic', prompt: 'Explain photosynthesis in simple terms.' },
-  { icon: 'help-circle-outline', label: 'Quiz me', prompt: 'Give me a 5-question quiz about world geography.' },
-  { icon: 'calendar-outline', label: 'Plan my study week', prompt: 'Help me make a study plan for this week.' },
-  { icon: 'create-outline', label: 'Improve my writing', prompt: 'Help me improve this paragraph: ' },
+  { icon: 'barbell-outline', label: 'Optimize PPL split', prompt: 'Analyze my Push, Pull, Legs workout split and give me recommendations for progressive overload and recovery.' },
+  { icon: 'flame-outline', label: 'Nutrition & macros', prompt: 'What daily protein, carbs, and caloric intake should I hit for muscle hypertrophy and strength?' },
+  { icon: 'walk-outline', label: '10km Cardio plan', prompt: 'Design an endurance running protocol to hit my daily 10km cardio goal without losing strength.' },
+  { icon: 'shield-outline', label: 'Form & joint health', prompt: 'What are the essential cues to protect my shoulders and elbows during heavy bench press and overhead presses?' },
 ];
 
 export default function ChatScreen() {
@@ -325,7 +325,7 @@ export default function ChatScreen() {
   }, []);
 
   const clearChat = useCallback(() => {
-    confirmAction('Clear chat?', 'All messages will be deleted and the AI memory reset.', 'Clear', async () => {
+    confirmAction('Clear chat?', 'All messages will be deleted and AI memory reset.', 'Clear', async () => {
       await clearAllConversations();
       await releaseLocalConversation(id);
       await ensureConversation(id);
@@ -378,7 +378,7 @@ export default function ChatScreen() {
       ? lastModel
         ? `Gemini · ${lastModel}`
         : 'Gemini · Cloud'
-      : 'Local AI';
+      : 'Local AI · Gemma';
   const modelLoading =
     problem === 'Loading the local model...' || modelStatus.state === 'loading';
   let statusColor = theme.danger;
@@ -393,10 +393,13 @@ export default function ChatScreen() {
 
   return (
     <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={insets.top} style={[styles.container, { backgroundColor: theme.background }]}>
+      {/* Top bar — no back button since this is a tab */}
       <View style={[styles.topBar, { borderBottomColor: theme.border }]}>
-        <IconButton icon="chevron-back" label="Back to Home" onPress={() => router.navigate('/' as Href)} />
+        <View style={[styles.systemBadge, { backgroundColor: theme.card }]}>
+          <Ionicons name="hardware-chip" size={16} color={theme.tint} />
+        </View>
         <View style={styles.flex}>
-          <Text style={[styles.title, { color: theme.text }]}>AI Chat</Text>
+          <Text style={[styles.title, { color: theme.text }]}>System Window</Text>
           <View style={styles.statusRow}>
             <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
             <Text numberOfLines={1} style={{ color: theme.textSecondary, fontSize: 12 }}>
@@ -406,19 +409,19 @@ export default function ChatScreen() {
         </View>
         <ContextRing usage={context} theme={theme} />
         <IconButton icon="trash-outline" label="Clear chat" onPress={clearChat} disabled={generating || messages.length === 0} />
-        <IconButton icon="settings-outline" label="Chat settings" onPress={openSettings} />
+        <IconButton icon="settings-outline" label="AI settings" onPress={openSettings} />
       </View>
       {banner}
       {messages.length === 0 ? (
         <View style={styles.empty}>
-          <View style={[styles.emptyAvatar, { backgroundColor: theme.buttonPrimary }]}>
-            <Ionicons name="sparkles" size={30} color="#FFF" />
+          <View style={[styles.emptyAvatar, { backgroundColor: theme.tint }]}>
+            <Ionicons name="hardware-chip" size={30} color="#FFF" />
           </View>
           <Text style={[styles.emptyTitle, { color: theme.text }]}>
-            Hi {settings.nickname || 'there'}, how can I help?
+            Hunter {settings.nickname || ''}, what do you seek?
           </Text>
           <Text style={[styles.emptySub, { color: theme.textSecondary }]}>
-            Ask anything. Your chat is saved on this device.
+            Your AI System is ready. All queries are processed on-device.
           </Text>
           <View style={styles.chips}>
             {SUGGESTIONS.map((s) => (
@@ -428,7 +431,7 @@ export default function ChatScreen() {
                 onPress={() => setInput(s.prompt)}
                 style={[
                   styles.chip,
-                  { backgroundColor: theme.buttonSecondary, borderColor: theme.buttonSecondary },
+                  { backgroundColor: theme.card, borderColor: theme.border },
                   problem !== null && styles.chipDisabled,
                 ]}
               >
@@ -490,7 +493,14 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  title: { fontSize: 18, fontWeight: '700' },
+  systemBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: { fontSize: 17, fontWeight: '700' },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
   empty: {
