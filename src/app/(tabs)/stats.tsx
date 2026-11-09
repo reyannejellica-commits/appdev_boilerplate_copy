@@ -6,7 +6,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { getHunterProfile, type HunterProfile } from '@/db/hunter';
+import { getDungeonGates, getHunterProfile, type DungeonGate, type HunterProfile } from '@/db/hunter';
 import { useSettings } from '@/settings/SettingsContext';
 import { useTheme } from '@/theme';
 
@@ -14,13 +14,18 @@ export default function StatsScreen() {
   const theme = useTheme();
   const { settings } = useSettings();
   const [profile, setProfile] = useState<HunterProfile | null>(null);
+  const [gates, setGates] = useState<DungeonGate[]>([]);
 
   useEffect(() => {
     let isMounted = true;
     (async () => {
       try {
         const p = await getHunterProfile(settings.nickname || 'Hunter');
-        if (isMounted) setProfile(p);
+        const g = await getDungeonGates();
+        if (isMounted) {
+          setProfile(p);
+          setGates(g);
+        }
       } catch (e) {
         console.warn('Failed to load profile for stats:', e);
       }
@@ -129,6 +134,41 @@ export default function StatsScreen() {
             <Text style={[styles.milestoneValue, { color: theme.text }]}>100%</Text>
             <Text style={[styles.milestoneLabel, { color: theme.textSecondary }]}>OFFLINE INTEGRITY</Text>
           </View>
+        </View>
+      </View>
+
+      {/* 5. Acquired Hunter Titles */}
+      <View style={styles.titlesSection}>
+        <Text style={[styles.sectionTitle, { color: theme.text }]}>Acquired Hunter Titles</Text>
+        <View style={styles.titlesList}>
+          {gates.filter((g) => g.defeated).length === 0 ? (
+            <View style={[styles.emptyTitlesCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <Ionicons name="shield-outline" size={28} color={theme.textDim} />
+              <Text style={{ color: theme.textSecondary, fontSize: 13, marginTop: 4 }}>
+                No dungeon titles acquired yet. Defeat a Dungeon Boss to unlock!
+              </Text>
+            </View>
+          ) : (
+            gates
+              .filter((g) => g.defeated)
+              .map((g) => (
+                <View
+                  key={g.id}
+                  style={[styles.titleBadgeCard, { backgroundColor: theme.card, borderColor: theme.tint }]}
+                >
+                  <Ionicons name="ribbon-outline" size={22} color={theme.accentGold} />
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text style={[styles.titleName, { color: theme.text }]}>{g.reward_title}</Text>
+                    <Text style={{ color: theme.textSecondary, fontSize: 11 }}>
+                      Slayer of {g.boss_name} • {g.rank}
+                    </Text>
+                  </View>
+                  <View style={[styles.equippedBadge, { backgroundColor: 'rgba(16,185,129,0.15)' }]}>
+                    <Text style={{ color: theme.success, fontSize: 10, fontWeight: '800' }}>ACQUIRED</Text>
+                  </View>
+                </View>
+              ))
+          )}
         </View>
       </View>
     </ScrollView>
@@ -300,5 +340,37 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: '800',
     letterSpacing: 0.5,
+  },
+
+  // Titles Section
+  titlesSection: {
+    gap: 12,
+  },
+  titlesList: {
+    gap: 10,
+  },
+  emptyTitlesCard: {
+    padding: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  titleBadgeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    gap: 12,
+  },
+  titleName: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  equippedBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
   },
 });
