@@ -10,6 +10,7 @@ export interface Theme {
   border: string;
   tint: string;
   accentCyan: string;
+  accentPurple: string;
   accentGold: string;
   buttonPrimary: string;
   buttonSecondary: string;
@@ -33,6 +34,7 @@ const light: Theme = {
   border: '#E2E8F0',
   tint: '#7C3AED',
   accentCyan: '#06B6D4',
+  accentPurple: '#8B5CF6',
   accentGold: '#F59E0B',
   buttonPrimary: '#7C3AED',
   buttonSecondary: '#EDE9FE',
@@ -56,6 +58,7 @@ const dark: Theme = {
   border: '#2E2254',     // Subtle purple border
   tint: '#8B5CF6',       // Electric violet
   accentCyan: '#00F0FF', // Solo Leveling neon cyan
+  accentPurple: '#A855F7', // Boss gate purple
   accentGold: '#F59E0B', // Hunter streak gold
   buttonPrimary: '#8B5CF6',
   buttonSecondary: '#241B44',

@@ -277,3 +277,138 @@ export async function getCardioHistory(limit = 10): Promise<CardioLog[]> {
     limit
   );
 }
+
+export interface DungeonGate {
+  id: string;
+  title: string;
+  rank: 'E-Rank' | 'D-Rank' | 'C-Rank' | 'B-Rank' | 'A-Rank' | 'S-Rank';
+  boss_name: string;
+  boss_image: string;
+  total_hp: number;
+  current_hp: number;
+  defeated: boolean;
+  reward_exp: number;
+  reward_title: string;
+}
+
+const DEFAULT_GATES: Omit<DungeonGate, 'id'>[] = [
+  {
+    title: 'Double Dungeon Chamber',
+    rank: 'E-Rank',
+    boss_name: 'Statue of the God',
+    boss_image: 'skull-outline',
+    total_hp: 500,
+    current_hp: 500,
+    defeated: false,
+    reward_exp: 250,
+    reward_title: 'Courageous Survivor',
+  },
+  {
+    title: 'Blue Venom Insect Cavern',
+    rank: 'D-Rank',
+    boss_name: 'Blue Venom-Fanged Kasaka',
+    boss_image: 'bug-outline',
+    total_hp: 1200,
+    current_hp: 1200,
+    defeated: false,
+    reward_exp: 500,
+    reward_title: 'Kasaka Poison Tamer',
+  },
+  {
+    title: 'Demon Castle Outskirts',
+    rank: 'C-Rank',
+    boss_name: 'Cerberus - Gatekeeper of Hell',
+    boss_image: 'flame-outline',
+    total_hp: 2500,
+    current_hp: 2500,
+    defeated: false,
+    reward_exp: 1000,
+    reward_title: 'Hell Gate Infiltrator',
+  },
+  {
+    title: 'High Orc Sovereign Domain',
+    rank: 'A-Rank',
+    boss_name: 'Kargalgan - High Orc Great Shaman',
+    boss_image: 'flash-outline',
+    total_hp: 6000,
+    current_hp: 6000,
+    defeated: false,
+    reward_exp: 2500,
+    reward_title: 'Curse Destroyer',
+  },
+  {
+    title: 'Jeju Island Ant Queen Hive',
+    rank: 'S-Rank',
+    boss_name: 'Ant King - Predator of the Black Island',
+    boss_image: 'nuclear-outline',
+    total_hp: 15000,
+    current_hp: 15000,
+    defeated: false,
+    reward_exp: 10000,
+    reward_title: 'Monarch of Shadows',
+  },
+];
+
+/** Retrieve all dungeon gates or populate defaults */
+export async function getDungeonGates(): Promise<DungeonGate[]> {
+  const db = await getDb();
+  let gates = await db.getAllAsync<any>('SELECT * FROM dungeon_gates ORDER BY total_hp ASC');
+
+  if (gates.length === 0) {
+    for (const g of DEFAULT_GATES) {
+      const id = newId();
+      await db.runAsync(
+        `INSERT INTO dungeon_gates (id, title, rank, boss_name, boss_image, total_hp, current_hp, defeated, reward_exp, reward_title)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        id,
+        g.title,
+        g.rank,
+        g.boss_name,
+        g.boss_image,
+        g.total_hp,
+        g.current_hp,
+        0,
+        g.reward_exp,
+        g.reward_title
+      );
+    }
+    gates = await db.getAllAsync<any>('SELECT * FROM dungeon_gates ORDER BY total_hp ASC');
+  }
+
+  return gates.map((g) => ({
+    ...g,
+    defeated: Boolean(g.defeated),
+  }));
+}
+
+/** Deal damage to a boss through training exertion (reps, volume, cardio) */
+export async function attackDungeonBoss(
+  gateId: string,
+  damage: number
+): Promise<{ bossDefeated: boolean; expAwarded: number; newHp: number }> {
+  const db = await getDb();
+  const gate = await db.getFirstAsync<any>(
+    'SELECT * FROM dungeon_gates WHERE id = ?',
+    gateId
+  );
+  if (!gate) return { bossDefeated: false, expAwarded: 0, newHp: 0 };
+  if (gate.defeated) return { bossDefeated: false, expAwarded: 0, newHp: 0 };
+
+  const newHp = Math.max(0, gate.current_hp - damage);
+  const bossDefeated = newHp === 0;
+
+  await db.runAsync(
+    'UPDATE dungeon_gates SET current_hp = ?, defeated = ? WHERE id = ?',
+    newHp,
+    bossDefeated ? 1 : 0,
+    gateId
+  );
+
+  let expAwarded = 0;
+  if (bossDefeated) {
+    expAwarded = gate.reward_exp;
+    await addHunterExp(expAwarded);
+  }
+
+  return { bossDefeated, expAwarded, newHp };
+}
