@@ -19,9 +19,8 @@ import { clearAllConversations } from '@/db/conversations';
 import { updateHunterName } from '@/db/hunter';
 import { useTranslation } from '@/i18n';
 import { useSettings } from '@/settings/SettingsContext';
-import { type LanguageCode, type ThemeColorKey, type TimerSoundType } from '@/settings/storage';
+import { type LanguageCode, type ThemeColorKey } from '@/settings/storage';
 import { useTheme } from '@/theme';
-import { SOUND_OPTIONS, playAlertSound } from '@/utils/alertSounds';
 import { confirmAction, showMessage } from '@/utils/confirm';
 import {
   AVATAR_OPTIONS,
@@ -54,7 +53,6 @@ export default function SettingsScreen() {
   const [nicknameDraft, setNicknameDraft] = useState(settings.nickname || 'Hunter');
   const [isAvatarModalVisible, setIsAvatarModalVisible] = useState(false);
   const [isLanguageModalVisible, setIsLanguageModalVisible] = useState(false);
-  const [isSoundModalVisible, setIsSoundModalVisible] = useState(false);
   const [isAboutModalVisible, setIsAboutModalVisible] = useState(false);
   const [aboutSubView, setAboutSubView] = useState<'main' | 'privacy' | 'terms'>('main');
 
@@ -80,10 +78,6 @@ export default function SettingsScreen() {
         setIsLanguageModalVisible(false);
         return true;
       }
-      if (isSoundModalVisible) {
-        setIsSoundModalVisible(false);
-        return true;
-      }
       if (isAboutModalVisible) {
         if (aboutSubView !== 'main') {
           setAboutSubView('main');
@@ -102,7 +96,6 @@ export default function SettingsScreen() {
   }, [
     isAvatarModalVisible,
     isLanguageModalVisible,
-    isSoundModalVisible,
     isAboutModalVisible,
     aboutSubView,
     handleBack,
@@ -153,22 +146,12 @@ export default function SettingsScreen() {
     setIsLanguageModalVisible(false);
   };
 
-  const handleSelectSound = async (id: TimerSoundType) => {
-    await update('timerSoundType', id);
-    playAlertSound(id);
-  };
-
   const toggleThemeMode = async (mode: 'dark' | 'light') => {
     try {
       await update('theme', mode);
     } catch (err) {
       console.warn('Failed to switch theme:', err);
     }
-  };
-
-  const toggleAudioFeedback = async () => {
-    const next = !settings.timerSoundEnabled;
-    await update('timerSoundEnabled', next);
   };
 
   const resetAllData = () => {
@@ -385,42 +368,6 @@ export default function SettingsScreen() {
               </Text>
             </SmoothPressable>
           </View>
-
-          {/* Audio Feedback Button */}
-          <SmoothPressable
-            onPress={toggleAudioFeedback}
-            style={[styles.audioFeedbackBtn, { backgroundColor: theme.cardSecondary, borderColor: theme.border }]}
-          >
-            <Ionicons
-              name={settings.timerSoundEnabled ? 'volume-high-outline' : 'volume-mute-outline'}
-              size={19}
-              color={settings.timerSoundEnabled ? theme.tint : theme.textSecondary}
-              style={{ marginRight: 10 }}
-            />
-            <Text style={[styles.audioFeedbackBtnText, { color: theme.text }]}>
-              {t('audioFeedback')}: {settings.timerSoundEnabled ? 'ON' : 'OFF'}
-            </Text>
-          </SmoothPressable>
-
-          {/* Sound Alerts Selection */}
-          <SmoothPressable
-            onPress={() => setIsSoundModalVisible(true)}
-            style={[
-              styles.soundAlertsBtn,
-              { backgroundColor: theme.cardSecondary, borderColor: theme.border, marginTop: 10 },
-            ]}
-          >
-            <Ionicons
-              name={(SOUND_OPTIONS.find((s) => s.id === (settings.timerSoundType || 'bell'))?.icon || 'notifications-outline') as any}
-              size={19}
-              color={theme.tint}
-              style={{ marginRight: 12 }}
-            />
-            <Text style={[styles.audioFeedbackBtnText, { color: theme.text, flex: 1 }]}>
-              {t('timerSound')}: {SOUND_OPTIONS.find((s) => s.id === (settings.timerSoundType || 'bell'))?.name || 'Bell'}
-            </Text>
-            <Ionicons name="chevron-forward" size={16} color={theme.textSecondary} />
-          </SmoothPressable>
         </View>
 
         {/* 5. CARD 4: SYSTEM LANGUAGE (100% Dynamic Language Switching) */}
@@ -743,74 +690,6 @@ export default function SettingsScreen() {
             </ScrollView>
 
             <Button label={t('close')} variant="secondary" onPress={() => setIsLanguageModalVisible(false)} style={{ marginTop: 8 }} />
-          </View>
-        </View>
-      </Modal>
-
-      {/* MODAL 3: SOUND SELECTOR */}
-      <Modal visible={isSoundModalVisible} transparent animationType="fade" onRequestClose={() => setIsSoundModalVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: theme.card, borderColor: theme.borderRose, maxHeight: '80%' }]}>
-            <View style={styles.modalHeaderRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.modalTitle, { color: theme.text }]}>{t('timerSound')}</Text>
-                <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>
-                  Select your alert tone
-                </Text>
-              </View>
-              <SmoothPressable onPress={() => setIsSoundModalVisible(false)} style={styles.closeBtn}>
-                <Ionicons name="close" size={20} color={theme.textSecondary} />
-              </SmoothPressable>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 10, gap: 8 }}>
-              {SOUND_OPTIONS.map((opt) => {
-                const isSelected = (settings.timerSoundType || 'bell') === opt.id;
-                return (
-                  <SmoothPressable
-                    key={opt.id}
-                    onPress={() => handleSelectSound(opt.id)}
-                    style={[
-                      styles.languageItemCard,
-                      {
-                        backgroundColor: theme.cardSecondary,
-                        borderColor: isSelected ? theme.tint : theme.border,
-                      },
-                      isSelected && {
-                        shadowColor: theme.tint,
-                        shadowOffset: { width: 0, height: 0 },
-                        shadowRadius: 8,
-                        shadowOpacity: 0.6,
-                        elevation: 3,
-                      },
-                    ]}
-                  >
-                    <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: isSelected ? `${theme.tint}25` : `${theme.textSecondary}15`, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                      <Ionicons name={opt.icon as any} size={20} color={isSelected ? theme.tint : theme.textSecondary} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={[
-                          styles.languageItemName,
-                          {
-                            color: isSelected ? theme.text : theme.textSecondary,
-                            fontWeight: isSelected ? '700' : '500',
-                          },
-                        ]}
-                      >
-                        {opt.name}
-                      </Text>
-                      <Text style={[styles.languageItemNative, { color: theme.textSecondary }]}>
-                        {opt.description}
-                      </Text>
-                    </View>
-                    {isSelected && <Ionicons name="checkmark-circle" size={20} color={theme.tint} />}
-                  </SmoothPressable>
-                );
-              })}
-            </ScrollView>
-
-            <Button label={t('close')} variant="secondary" onPress={() => setIsSoundModalVisible(false)} style={{ marginTop: 8 }} />
           </View>
         </View>
       </Modal>
