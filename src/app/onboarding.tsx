@@ -1,7 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
+  BackHandler,
   KeyboardAvoidingView,
+  Platform,
   StyleSheet,
   Text,
   TextInput,
@@ -9,8 +12,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '@/components/Button';
+import { PreOnboardingSplash } from '@/components/PreOnboardingSplash';
 import { SmoothPressable } from '@/components/SmoothPressable';
 import { getHunterProfile, updateHunterName } from '@/db/hunter';
+import { useTranslation } from '@/i18n';
 import { useSettings } from '@/settings/SettingsContext';
 import { useTheme } from '@/theme';
 
@@ -46,131 +51,72 @@ const SLIDES: Slide[] = [
 
 export default function OnboardingScreen() {
   const theme = useTheme();
+  const router = useRouter();
   const { settings, update } = useSettings();
+  const { t } = useTranslation();
 
-  // Mode: 'boot' -> 'slides' -> 'hunter_name'
-  const [bootProgress, setBootProgress] = useState(24);
-  const [isBootDone, setIsBootDone] = useState(false);
+  // If already onboarded, jump directly to slides without replaying the splash
+  const [isBootDone, setIsBootDone] = useState(Boolean(settings.onboarded));
   const [currentSlide, setCurrentSlide] = useState(0);
   const [nickname, setNickname] = useState(settings.nickname || '');
+  const [submitting, setSubmitting] = useState(false);
 
-  // Simulate system core initialization
+  // Hardware Android Back button support
   useEffect(() => {
-    const timer = setInterval(() => {
-      setBootProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(timer);
-          setIsBootDone(true);
-          return 100;
+    const onBackPress = () => {
+      if (currentSlide > 0) {
+        setCurrentSlide((s) => s - 1);
+        return true;
+      }
+      if (settings.onboarded) {
+        if (router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace('/(tabs)');
         }
-        return prev + 12;
-      });
-    }, 250);
-    return () => clearInterval(timer);
-  }, []);
+        return true;
+      }
+      return false; // let Android OS exit app on first onboarding slide when not onboarded
+    };
+
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [currentSlide, settings.onboarded, router]);
 
   const trimmed = nickname.trim();
 
+  const handleExitToHub = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)');
+    }
+  };
+
   const handleFinish = async () => {
-    const finalName = trimmed || 'Hunter';
-    update('nickname', finalName);
-    update('onboarded', true);
+    if (submitting) return;
+    setSubmitting(true);
+    const finalName = trimmed || settings.nickname || 'Hunter';
     try {
       await getHunterProfile(finalName);
       await updateHunterName(finalName);
     } catch (e) {
       console.warn('Failed to seed hunter profile:', e);
     }
+    try {
+      await update('nickname', finalName);
+      await update('onboarded', true);
+      handleExitToHub();
+    } catch (e) {
+      console.warn('Failed to complete onboarding:', e);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  // 1. SYSTEM BOOT SEQUENCE SCREEN (Matches Figma mockup)
+  // 1. PRE-ONBOARDING MINIMALIST SPLASH SCREEN
   if (!isBootDone) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-        <View style={styles.bootCenter}>
-          <View
-            style={[
-              styles.bootCard,
-              { backgroundColor: theme.card, borderColor: theme.border },
-            ]}
-          >
-            {/* Top Badge */}
-            <View style={styles.bootPill}>
-              <Text style={[styles.bootPillText, { color: theme.textSecondary }]}>
-                [SYSTEM BOOT SEQUENCE]
-              </Text>
-              <View style={[styles.cyanDot, { backgroundColor: theme.accentCyan }]} />
-            </View>
-
-            {/* Glowing Emblem */}
-            <View style={styles.avatarGlowWrapper}>
-              <View style={[styles.avatarRing, { borderColor: theme.tint, shadowColor: theme.tint }]}>
-                <Ionicons name="shield-checkmark" size={44} color="#FFFFFF" />
-              </View>
-            </View>
-
-            {/* Title & Subtitle */}
-            <View style={styles.titleBlock}>
-              <Text style={[styles.brandTitle, { color: '#FFFFFF' }]}>PEAKFIT</Text>
-              <Text style={[styles.brandSubtitle, { color: theme.textSecondary }]}>
-                PEAK LEVELING FITNESS SYSTEM
-              </Text>
-            </View>
-
-            {/* Progress Bar with Runner Icon */}
-            <View style={styles.progressContainer}>
-              <View style={styles.runnerTrack}>
-                <View
-                  style={[
-                    styles.runnerIconPos,
-                    { left: `${Math.max(0, Math.min(92, bootProgress - 5))}%` },
-                  ]}
-                >
-                  <Ionicons name="walk" size={16} color={theme.accentCyan} />
-                </View>
-                <View style={[styles.progressBarTrack, { backgroundColor: theme.surface }]}>
-                  <View
-                    style={[
-                      styles.progressBarFill,
-                      {
-                        width: `${bootProgress}%`,
-                        backgroundColor: theme.tint,
-                      },
-                    ]}
-                  />
-                </View>
-              </View>
-
-              <View style={styles.progressLabelRow}>
-                <Text style={[styles.progressStatusText, { color: theme.textSecondary }]}>
-                  INITIALIZING SYSTEM CORE...
-                </Text>
-                <Text style={[styles.progressPercentText, { color: theme.accentCyan }]}>
-                  {bootProgress}%
-                </Text>
-              </View>
-            </View>
-
-            {/* Footer Protocol Badge */}
-            <View style={styles.bootFooterRow}>
-              <Text style={[styles.bootFooterText, { color: theme.textDim }]}>
-                100% OFFLINE • SOLO LEVELING PROTOCOL
-              </Text>
-            </View>
-
-            {/* Skip / Fast Forward Button */}
-            <SmoothPressable
-              onPress={() => setIsBootDone(true)}
-              style={[styles.skipBootButton, { backgroundColor: theme.surface, borderColor: theme.border }]}
-            >
-              <Text style={[styles.skipBootText, { color: theme.textSecondary }]}>
-                Bypass Sequence
-              </Text>
-            </SmoothPressable>
-          </View>
-        </View>
-      </SafeAreaView>
-    );
+    return <PreOnboardingSplash onFinish={() => setIsBootDone(true)} />;
   }
 
   // 2. SLIDES & HUNTER AWAKENING
@@ -178,15 +124,73 @@ export default function OnboardingScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      <KeyboardAvoidingView style={styles.flex} behavior="padding">
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        {/* Top Header Bar with Back navigation & Title */}
+        <View style={styles.topHeaderBar}>
+          {settings.onboarded ? (
+            <SmoothPressable
+              onPress={handleExitToHub}
+              style={styles.headerBackBtn}
+              accessibilityRole="button"
+              accessibilityLabel={t('back')}
+              hitSlop={10}
+            >
+              <Ionicons name="arrow-back" size={20} color={theme.text} />
+              <Text style={[styles.headerBackText, { color: theme.text }]}>
+                {t('back')}
+              </Text>
+            </SmoothPressable>
+          ) : (
+            <View style={{ width: 60 }} />
+          )}
+
+          <Text style={[styles.headerTitle, { color: theme.tint }]} numberOfLines={1}>
+            {t('systemProtocolGuide')}
+          </Text>
+
+          {settings.onboarded ? (
+            <SmoothPressable
+              onPress={handleExitToHub}
+              style={styles.headerCloseBtn}
+              accessibilityRole="button"
+              accessibilityLabel={t('close')}
+              hitSlop={10}
+            >
+              <Ionicons name="close" size={20} color={theme.textSecondary} />
+            </SmoothPressable>
+          ) : (
+            <View style={{ width: 60 }} />
+          )}
+        </View>
+
         <View style={styles.content}>
           {isHunterStep ? (
             <View style={styles.slideCard}>
-              <View style={[styles.iconCircle, { backgroundColor: theme.surface, borderColor: theme.tint }]}>
+              <View
+                style={[
+                  styles.iconCircle,
+                  {
+                    backgroundColor: theme.cardSecondary,
+                    borderColor: theme.borderRose,
+                    shadowColor: theme.glow,
+                  },
+                ]}
+              >
                 <Ionicons name="person" size={48} color={theme.tint} />
               </View>
 
-              <View style={[styles.badge, { backgroundColor: theme.surface, borderColor: theme.tint }]}>
+              <View
+                style={[
+                  styles.badge,
+                  {
+                    backgroundColor: theme.cardSecondary,
+                    borderColor: theme.borderRose,
+                  },
+                ]}
+              >
                 <Text style={[styles.badgeText, { color: theme.tint }]}>AWAKENING</Text>
               </View>
 
@@ -211,27 +215,55 @@ export default function OnboardingScreen() {
                   styles.input,
                   {
                     color: theme.text,
-                    backgroundColor: theme.surface,
-                    borderColor: theme.border,
+                    backgroundColor: theme.cardSecondary,
+                    borderColor: theme.borderRose,
                   },
                 ]}
               />
 
-              <View style={[styles.rankBox, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+              <View
+                style={[
+                  styles.rankBox,
+                  {
+                    backgroundColor: theme.cardSecondary,
+                    borderColor: theme.borderRose,
+                  },
+                ]}
+              >
                 <Ionicons name="shield-outline" size={18} color={theme.accentGold} />
                 <Text style={[styles.rankText, { color: theme.textSecondary }]}>
-                  Starting Rank: <Text style={{ color: theme.accentGold, fontWeight: '700' }}>E-Rank Hunter (Lv. 1)</Text>
+                  Starting Rank:{' '}
+                  <Text style={{ color: theme.accentGold, fontWeight: '700' }}>
+                    E-Rank Hunter (Lv. 1)
+                  </Text>
                 </Text>
               </View>
             </View>
           ) : (
             <View style={styles.slideCard}>
-              <View style={[styles.iconCircle, { backgroundColor: theme.surface, borderColor: theme.tint }]}>
+              <View
+                style={[
+                  styles.iconCircle,
+                  {
+                    backgroundColor: theme.cardSecondary,
+                    borderColor: theme.borderRose,
+                    shadowColor: theme.glow,
+                  },
+                ]}
+              >
                 <Ionicons name={SLIDES[currentSlide].icon} size={48} color={theme.tint} />
               </View>
 
-              <View style={[styles.badge, { backgroundColor: theme.surface, borderColor: theme.accentCyan }]}>
-                <Text style={[styles.badgeText, { color: theme.accentCyan }]}>
+              <View
+                style={[
+                  styles.badge,
+                  {
+                    backgroundColor: theme.cardSecondary,
+                    borderColor: theme.borderRose,
+                  },
+                ]}
+              >
+                <Text style={[styles.badgeText, { color: theme.accentHighlight }]}>
                   {SLIDES[currentSlide].badge}
                 </Text>
               </View>
@@ -263,14 +295,37 @@ export default function OnboardingScreen() {
         </View>
 
         {/* Footer Navigation */}
-        <View style={styles.footer}>
+        <View
+          style={[
+            styles.footer,
+            currentSlide === 0 && !settings.onboarded && styles.footerSingle,
+          ]}
+        >
+          {currentSlide > 0 ? (
+            <Button
+              label={t('back')}
+              variant="secondary"
+              onPress={() => setCurrentSlide(currentSlide - 1)}
+            />
+          ) : settings.onboarded ? (
+            <Button
+              label={t('returnToHub')}
+              variant="secondary"
+              onPress={handleExitToHub}
+            />
+          ) : null}
+
           <Button
-            label={currentSlide > 0 ? 'Back' : 'Back to Boot'}
-            variant="secondary"
-            onPress={() => (currentSlide > 0 ? setCurrentSlide(currentSlide - 1) : setIsBootDone(false))}
-          />
-          <Button
-            label={isHunterStep ? 'Initiate Protocol' : 'Next'}
+            label={
+              isHunterStep
+                ? settings.onboarded
+                  ? t('returnToHub')
+                  : 'Initiate Protocol'
+                : 'Next'
+            }
+            loading={isHunterStep && submitting}
+            disabled={submitting}
+            style={currentSlide === 0 && !settings.onboarded ? styles.buttonFullWidth : undefined}
             onPress={() => (isHunterStep ? handleFinish() : setCurrentSlide(currentSlide + 1))}
           />
         </View>
@@ -283,129 +338,39 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   flex: { flex: 1 },
 
-  // Boot sequence styles
-  bootCenter: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  bootCard: {
-    width: '100%',
-    maxWidth: 380,
-    borderRadius: 24,
-    borderWidth: 1.5,
-    padding: 24,
-    alignItems: 'center',
-    gap: 20,
-    shadowColor: '#8B5CF6',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 24,
-    elevation: 8,
-  },
-  bootPill: {
+  // Top Header Bar
+  topHeaderBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-  },
-  bootPillText: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 1.5,
-  },
-  cyanDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  avatarGlowWrapper: {
-    marginVertical: 4,
-  },
-  avatarRing: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    borderWidth: 2.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#1E1538',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 16,
-    elevation: 10,
-  },
-  titleBlock: {
-    alignItems: 'center',
-    gap: 6,
-  },
-  brandTitle: {
-    fontSize: 28,
-    fontWeight: '900',
-    letterSpacing: 2,
-  },
-  brandSubtitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1.2,
-  },
-  progressContainer: {
-    width: '100%',
-    gap: 8,
-    marginTop: 4,
-  },
-  runnerTrack: {
-    position: 'relative',
-    height: 22,
-    justifyContent: 'flex-end',
-  },
-  runnerIconPos: {
-    position: 'absolute',
-    top: 0,
-    zIndex: 2,
-  },
-  progressBarTrack: {
-    height: 6,
-    borderRadius: 3,
-    overflow: 'hidden',
-    width: '100%',
-  },
-  progressBarFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  progressLabelRow: {
-    flexDirection: 'row',
     justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  headerBackBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 8,
   },
-  progressStatusText: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.8,
+  headerBackText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
-  progressPercentText: {
+  headerTitle: {
     fontSize: 12,
     fontWeight: '800',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
-  bootFooterRow: {
-    marginTop: 2,
-  },
-  bootFooterText: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
-  skipBootButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginTop: 4,
-  },
-  skipBootText: {
-    fontSize: 12,
-    fontWeight: '600',
+  headerCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // Slides styles
@@ -428,12 +393,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 4,
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 16,
+    shadowOpacity: 0.75,
+    elevation: 6,
   },
   badge: {
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 6,
-    borderWidth: 1,
+    borderWidth: 1.2,
+    shadowColor: '#D982A5',
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 6,
+    shadowOpacity: 0.4,
   },
   badgeText: {
     fontSize: 11,
@@ -453,12 +426,16 @@ const styles = StyleSheet.create({
   },
   input: {
     alignSelf: 'stretch',
-    borderWidth: 1,
+    borderWidth: 1.2,
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
     marginTop: 8,
+    shadowColor: '#D982A5',
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 8,
+    shadowOpacity: 0.4,
   },
   rankBox: {
     flexDirection: 'row',
@@ -467,10 +444,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 12,
-    borderWidth: 1,
+    borderWidth: 1.2,
     alignSelf: 'stretch',
     justifyContent: 'center',
     marginTop: 4,
+    shadowColor: '#D982A5',
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 8,
+    shadowOpacity: 0.4,
   },
   rankText: {
     fontSize: 13,
@@ -492,5 +473,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 24,
     paddingBottom: 24,
+  },
+  footerSingle: {
+    justifyContent: 'flex-end',
+  },
+  buttonFullWidth: {
+    flex: 1,
   },
 });

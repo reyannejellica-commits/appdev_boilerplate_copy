@@ -13,7 +13,7 @@ export function Section({
   theme: Theme;
 }) {
   return (
-    <View style={[styles.section, { backgroundColor: theme.card }]}>
+    <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.borderRose }]}>
       <Text style={[styles.title, { color: theme.textSecondary }]}>{title}</Text>
       {children}
     </View>
@@ -21,7 +21,17 @@ export function Section({
 }
 
 const styles = StyleSheet.create({
-  section: { borderRadius: 12, padding: 14, marginBottom: 14 },
+  section: {
+    borderRadius: 12,
+    borderWidth: 1.2,
+    padding: 14,
+    marginBottom: 14,
+    shadowColor: '#D982A5',
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 10,
+    shadowOpacity: 0.45,
+    elevation: 4,
+  },
   title: {
     fontSize: 13,
     fontWeight: '700',

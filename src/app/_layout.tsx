@@ -68,12 +68,10 @@ function RootNavigator() {
           animation: reduceMotion ? 'none' : 'slide_from_right',
         }}
       >
-        <Stack.Protected guard={!settings.onboarded}>
-          <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-        </Stack.Protected>
+        <Stack.Screen name="onboarding" options={{ headerShown: false }} />
         <Stack.Protected guard={settings.onboarded}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+          <Stack.Screen name="settings" options={{ headerShown: false }} />
           <Stack.Screen name="chat-settings" options={{ title: 'Chat settings' }} />
           <Stack.Screen name="privacy" options={{ title: 'Privacy Policy' }} />
           <Stack.Screen name="terms" options={{ title: 'Terms & Conditions' }} />

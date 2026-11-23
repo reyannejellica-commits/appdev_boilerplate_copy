@@ -1,865 +1,1048 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, type Href } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
-  Modal,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { IconButton } from '@/components/Button';
+import { ExerciseGuideModal } from '@/components/ExerciseGuideModal';
+import { PrimeAwakeningModal } from '@/components/PrimeAwakeningModal';
 import { SmoothPressable } from '@/components/SmoothPressable';
 import {
-  attackDungeonBoss,
-  getDailyQuests,
-  getDungeonGates,
+  addHunterExp,
   getHunterProfile,
-  incrementDailyQuest,
-  type DailyQuest,
-  type DungeonGate,
+  getTodayDateString,
   type HunterProfile,
 } from '@/db/hunter';
-import { useAiStatus } from '@/hooks/useAiStatus';
+import { getProgramById, type ProgramDay } from '@/db/programs';
+import {
+  getSplitSets,
+  toggleSetCompletion,
+  updateSetValues,
+  WORKOUT_SPLITS,
+  type ExerciseSet,
+  type SplitDefinition,
+} from '@/db/workouts';
+import { useTranslation } from '@/i18n';
 import { useSettings } from '@/settings/SettingsContext';
 import { useTheme } from '@/theme';
+import { playAlertSound } from '@/utils/alertSounds';
+import { showMessage } from '@/utils/confirm';
+import { getAvatarById } from '@/utils/profileOptions';
 
-export default function QuestScreen() {
+export default function HomeScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const { settings, update } = useSettings();
-  const { problem, isOnline } = useAiStatus();
+  const { settings } = useSettings();
+  const { t } = useTranslation();
 
-  const [profile, setProfile] = useState<HunterProfile | null>(null);
-  const [quests, setQuests] = useState<DailyQuest[]>([]);
-  const [dungeonGates, setDungeonGates] = useState<DungeonGate[]>([]);
-  const [selectedGate, setSelectedGate] = useState<DungeonGate | null>(null);
-  const [bossAttackPower, setBossAttackPower] = useState('50');
+  const [hunter, setHunter] = useState<HunterProfile | null>(null);
+  const [selectedDayIdx, setSelectedDayIdx] = useState<number>(0);
+  const [protocolsMap, setProtocolsMap] = useState<Record<string, ExerciseSet[]>>({});
+  const [guideExercise, setGuideExercise] = useState<string | null>(null);
+  const [awakeningOpen, setAwakeningOpen] = useState<boolean>(false);
 
-  // Log Quest Progress Modal State
-  const [activeQuest, setActiveQuest] = useState<DailyQuest | null>(null);
-  const [logAmount, setLogAmount] = useState('10');
+  // Active workout program selected by user in the Program tab
+  const currentProgram = useMemo(() => {
+    return getProgramById(settings.activeProgramId || 'fullbody-monarch');
+  }, [settings.activeProgramId]);
 
-  const loadData = useCallback(async () => {
+  const splitDays = currentProgram.days;
+  const safeDayIdx = selectedDayIdx >= splitDays.length ? 0 : selectedDayIdx;
+  const activeDay: ProgramDay = splitDays[safeDayIdx] || splitDays[0];
+  const currentAvatar = useMemo(() => getAvatarById(settings.avatarId), [settings.avatarId]);
+  const todayStr = useMemo(() => getTodayDateString(), []);
+
+  // Load hunter profile
+  const loadProfile = useCallback(async () => {
     try {
       const p = await getHunterProfile(settings.nickname || 'Hunter');
-      const q = await getDailyQuests();
-      const gates = await getDungeonGates();
-      setProfile(p);
-      setQuests(q);
-      setDungeonGates(gates);
+      setHunter(p);
     } catch (e) {
-      console.warn('Failed to load quest data:', e);
+      console.warn('Failed to load hunter profile:', e);
     }
   }, [settings.nickname]);
 
   useEffect(() => {
-    let isMounted = true;
-    (async () => {
-      try {
-        const p = await getHunterProfile(settings.nickname || 'Hunter');
-        const q = await getDailyQuests();
-        const gates = await getDungeonGates();
-        if (isMounted) {
-          setProfile(p);
-          setQuests(q);
-          setDungeonGates(gates);
-        }
-      } catch (e) {
-        console.warn('Failed to load quest data:', e);
-      }
-    })();
+    let ignore = false;
+    getHunterProfile(settings.nickname || 'Hunter')
+      .then((p) => {
+        if (!ignore) setHunter(p);
+      })
+      .catch((e) => console.warn('Failed to load hunter profile:', e));
     return () => {
-      isMounted = false;
+      ignore = true;
     };
   }, [settings.nickname]);
 
-  const toggleTheme = () => {
-    update('theme', settings.theme === 'dark' ? 'light' : 'dark');
-  };
+  // Preload all days of current program into in-memory dictionary for 0ms zero-latency switching
+  useEffect(() => {
+    let ignore = false;
+    const dayIds = currentProgram.days.map((d) => d.id);
+    Promise.all(dayIds.map((id) => getSplitSets(id, todayStr)))
+      .then((results) => {
+        if (!ignore) {
+          const map: Record<string, ExerciseSet[]> = {};
+          dayIds.forEach((id, idx) => {
+            map[id] = results[idx];
+          });
+          setProtocolsMap((prev) => ({ ...prev, ...map }));
+        }
+      })
+      .catch((e) => console.warn('Failed to preload program splits:', e));
 
-  const handleIncrement = async (quest: DailyQuest, amount: number) => {
-    try {
-      const { completedNow, expGained } = await incrementDailyQuest(quest.quest_key, amount);
-      if (completedNow) {
-        Alert.alert(
-          'QUEST ACCOMPLISHED! ⚡',
-          `The System recognized your effort: +${expGained} EXP received!`
-        );
+    return () => {
+      ignore = true;
+    };
+  }, [currentProgram, todayStr]);
+
+  // Current sets for the active day
+  const currentSets = useMemo(() => {
+    return protocolsMap[activeDay.id] || [];
+  }, [protocolsMap, activeDay.id]);
+
+  // Group exercise sets by exercise_name with guaranteed order and fallback
+  const groupedExercises = useMemo(() => {
+    const splitDef: SplitDefinition | undefined = WORKOUT_SPLITS.find((s) => s.id === activeDay.id);
+    const groups: { name: string; sets: ExerciseSet[] }[] = [];
+
+    if (splitDef) {
+      for (const ex of splitDef.exercises) {
+        const exSets = currentSets.filter((s) => s.exercise_name === ex.name);
+        if (exSets.length > 0) {
+          groups.push({ name: ex.name, sets: exSets });
+        } else {
+          // Instant fallback placeholders while loading so screen never collapses
+          const placeholders: ExerciseSet[] = [];
+          for (let i = 1; i <= ex.sets; i++) {
+            placeholders.push({
+              id: `${activeDay.id}-${ex.name}-${i}`,
+              split_id: activeDay.id,
+              exercise_name: ex.name,
+              set_number: i,
+              weight_kg: ex.defaultWeight,
+              reps: ex.defaultReps,
+              completed: false,
+              date: todayStr,
+            });
+          }
+          groups.push({ name: ex.name, sets: placeholders });
+        }
       }
-      loadData();
-    } catch (e) {
-      console.warn('Failed to update quest:', e);
+    }
+    return groups;
+  }, [activeDay.id, currentSets, todayStr]);
+
+  const totalSetsCount = useMemo(() => {
+    const splitDef: SplitDefinition | undefined = WORKOUT_SPLITS.find((s) => s.id === activeDay.id);
+    if (!splitDef) return currentSets.length || 15;
+    return splitDef.exercises.reduce((sum, ex) => sum + ex.sets, 0);
+  }, [activeDay.id, currentSets]);
+
+  const completedSetsCount = useMemo(() => {
+    return currentSets.filter((s) => s.completed).length;
+  }, [currentSets]);
+
+  const completionPercentage = useMemo(() => {
+    if (totalSetsCount === 0) return 0;
+    return Math.min(100, Math.round((completedSetsCount / totalSetsCount) * 100));
+  }, [completedSetsCount, totalSetsCount]);
+
+  // Instant day navigation
+  const handlePrevDay = () => {
+    setSelectedDayIdx((prev) => (prev > 0 ? prev - 1 : splitDays.length - 1));
+  };
+
+  const handleNextDay = () => {
+    setSelectedDayIdx((prev) => (prev < splitDays.length - 1 ? prev + 1 : 0));
+  };
+
+  // Immediate checkbox toggle: updates state in 0ms and saves to SQLite in background
+  const handleToggleSet = (setItem: ExerciseSet) => {
+    const nextCompleted = !setItem.completed;
+
+    setProtocolsMap((prev) => {
+      const splitSets = prev[activeDay.id] || [];
+      const updated = splitSets.map((s) =>
+        s.id === setItem.id ? { ...s, completed: nextCompleted } : s
+      );
+      return { ...prev, [activeDay.id]: updated };
+    });
+
+    toggleSetCompletion(setItem.id, nextCompleted)
+      .then((result) => {
+        if (result.allDone) {
+          playAlertSound(settings.timerSoundType || 'bell');
+          showMessage(
+            'PROTOCOL COMPLETE!',
+            `You conquered all ${totalSetsCount} sets for ${activeDay.name}!\n+100 Hunter EXP Bonus earned!`
+          );
+        }
+        void loadProfile();
+      })
+      .catch((e) => console.warn('Failed to toggle set completion:', e));
+  };
+
+  // Immediate weight edit
+  const handleChangeWeight = (setId: string, text: string) => {
+    const num = parseFloat(text) || 0;
+    setProtocolsMap((prev) => {
+      const splitSets = prev[activeDay.id] || [];
+      const updated = splitSets.map((s) =>
+        s.id === setId ? { ...s, weight_kg: num } : s
+      );
+      return { ...prev, [activeDay.id]: updated };
+    });
+
+    const target = currentSets.find((s) => s.id === setId);
+    if (target) {
+      void updateSetValues(setId, num, target.reps);
     }
   };
 
-  const handleBossStrike = async () => {
-    if (!selectedGate) return;
-    const dmg = parseInt(bossAttackPower, 10);
-    if (isNaN(dmg) || dmg <= 0) return;
+  // Immediate reps edit
+  const handleChangeReps = (setId: string, text: string) => {
+    const num = parseInt(text, 10) || 0;
+    setProtocolsMap((prev) => {
+      const splitSets = prev[activeDay.id] || [];
+      const updated = splitSets.map((s) =>
+        s.id === setId ? { ...s, reps: num } : s
+      );
+      return { ...prev, [activeDay.id]: updated };
+    });
 
-    try {
-      const res = await attackDungeonBoss(selectedGate.id, dmg);
-      await loadData();
-      if (res.bossDefeated) {
-        Alert.alert(
-          'DUNGEON CLEARED! ⚔️',
-          `Boss ${selectedGate.boss_name} annihilated!\nRewarded +${res.expAwarded} EXP and Title: "${selectedGate.reward_title}"`
-        );
-        setSelectedGate(null);
-      } else {
-        setSelectedGate((prev) => (prev ? { ...prev, current_hp: res.newHp } : null));
-      }
-    } catch (e) {
-      console.warn('Failed to strike dungeon boss:', e);
+    const target = currentSets.find((s) => s.id === setId);
+    if (target) {
+      void updateSetValues(setId, target.weight_kg, num);
     }
   };
 
-  const handleCustomLog = async () => {
-    if (!activeQuest) return;
-    const count = parseInt(logAmount, 10) || 0;
-    if (count > 0) {
-      await handleIncrement(activeQuest, count);
-    }
-    setActiveQuest(null);
+  // Save & Finish Workout
+  const handleSaveAndFinish = async () => {
+    playAlertSound(settings.timerSoundType || 'bell');
+    await addHunterExp(50);
+    await loadProfile();
+    showMessage(
+      'WORKOUT SAVED!',
+      `Hunter ${settings.nickname || 'Hunter'}, your training data for ${activeDay.name} is safely stored offline.\n\nCompleted: ${completedSetsCount} / ${totalSetsCount} Sets (${completionPercentage}%).\n+50 EXP Bonus Awarded!`
+    );
   };
-
-  const providerLabel =
-    settings.provider === 'cloud' ? 'Cloud AI (Gemini)' : 'Local AI (Gemma)';
 
   return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: theme.background }]}
-      contentContainerStyle={styles.scrollContent}
-      showsVerticalScrollIndicator={false}
-    >
-      {/* 1. Header Profile Row (Matches Figma Prototype) */}
-      <View style={styles.topProfileRow}>
-        <View style={styles.profileLeft}>
-          <View style={[styles.avatarCircle, { backgroundColor: theme.surface, borderColor: theme.tint }]}>
-            <Ionicons name="shield-half" size={26} color={theme.tint} />
-          </View>
-          <View style={styles.profileInfo}>
-            <View style={styles.nameRankRow}>
-              <Text style={[styles.hunterName, { color: theme.text }]}>
-                {profile?.hunter_name || settings.nickname || 'Hunter'}
-              </Text>
-              <View style={[styles.rankPill, { backgroundColor: theme.surface, borderColor: theme.tint }]}>
-                <Text style={[styles.rankPillText, { color: theme.tint }]}>
-                  {profile?.rank || 'E-RANK'}
-                </Text>
-              </View>
-            </View>
-            <Text style={[styles.questSubtitle, { color: theme.textSecondary }]}>
-              Quest: Overcome the Limits
-            </Text>
-          </View>
-        </View>
-
-        {/* Quick Toggles */}
-        <View style={styles.headerActions}>
-          <IconButton
-            icon={settings.theme === 'dark' ? 'sunny-outline' : 'moon-outline'}
-            label="Toggle theme"
-            onPress={toggleTheme}
-          />
-          <IconButton
-            icon="settings-outline"
-            label="Settings"
-            onPress={() => router.push('/settings' as Href)}
-          />
-        </View>
-      </View>
-
-      {/* 2. Hero Card: DAILY PEAK QUEST (Matches Figma Hero Card) */}
-      <View
-        style={[
-          styles.heroCard,
-          { backgroundColor: theme.card, borderColor: theme.tint },
-        ]}
+    <View style={[styles.root, { backgroundColor: theme.background }]}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.heroHeader}>
-          <Ionicons name="flash" size={14} color={theme.tint} />
-          <Text style={[styles.heroBadgeText, { color: theme.tint }]}>
-            DAILY PEAK QUEST
-          </Text>
-        </View>
-
-        <View style={styles.heroBodyRow}>
-          <View style={[styles.emblemIcon, { backgroundColor: theme.surface, borderColor: theme.tint }]}>
-            <Ionicons name="person" size={24} color={theme.tint} />
-          </View>
-          <Text style={[styles.quoteText, { color: theme.text }]}>
-            &quot;Each repetition sharpens the blade. Overcome your limits today.&quot;
-          </Text>
-        </View>
-
-        <View style={styles.heroFooter}>
-          <View style={[styles.streakPill, { backgroundColor: theme.surface, borderColor: theme.accentGold }]}>
-            <Text style={[styles.streakText, { color: theme.accentGold }]}>
-              🔥 Hunter Streak: {profile?.streak_days || 1} Day
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      {/* 3. Today's Training Protocol Quick Action */}
-      <SmoothPressable
-        onPress={() => router.push('/program' as Href)}
-        style={[styles.trainingBanner, { backgroundColor: theme.card, borderColor: theme.border }]}
-      >
-        <View style={styles.bannerIconBlock}>
-          <Ionicons name="barbell-outline" size={28} color={theme.tint} />
-        </View>
-        <View style={styles.bannerTextBlock}>
-          <View style={styles.bannerTopLine}>
-            <Text style={[styles.bannerTitle, { color: theme.text }]}>Push, Pull, Legs (PPL)</Text>
-            <View style={[styles.activeTag, { backgroundColor: theme.tint }]}>
-              <Text style={styles.activeTagText}>TODAY</Text>
-            </View>
-          </View>
-          <Text style={[styles.bannerSubtitle, { color: theme.textSecondary }]}>
-            Push Day A • Chest, Shoulders, Triceps Protocol
-          </Text>
-        </View>
-        <Ionicons name="chevron-forward" size={20} color={theme.textSecondary} />
-      </SmoothPressable>
-
-      {/* 4. Daily System Quests List */}
-      <View style={styles.questsSection}>
-        <View style={styles.sectionTitleRow}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Daily Quest Protocol</Text>
-          <Text style={[styles.sectionActionText, { color: theme.textSecondary }]}>
-            {quests.filter((q) => q.completed).length} / {quests.length} Completed
-          </Text>
-        </View>
-
-        <View style={styles.questsList}>
-          {quests.map((quest) => {
-            const percent = Math.min(100, Math.round((quest.current_count / quest.target_count) * 100));
-            return (
+        {/* 1. TOP HUNTER BAR (Profile tap opens Prime Awakening) */}
+        <View style={styles.topHunterBar}>
+          <SmoothPressable
+            onPress={() => setAwakeningOpen(true)}
+            style={styles.topHunterLeft}
+            accessibilityRole="button"
+            accessibilityLabel="Open Prime Awakening Profile"
+          >
+            <View
+              style={[
+                styles.topAvatarWrapper,
+                {
+                  borderColor: `${theme.tint}45`,
+                  backgroundColor: `${theme.tint}12`,
+                },
+              ]}
+            >
               <View
-                key={quest.id}
                 style={[
-                  styles.questCard,
-                  {
-                    backgroundColor: theme.card,
-                    borderColor: quest.completed ? theme.tint : theme.border,
-                  },
+                  styles.topAvatarCircle,
+                  { borderColor: theme.tint, shadowColor: theme.glow },
                 ]}
               >
-                <View style={styles.questTopRow}>
-                  <View style={styles.questInfo}>
-                    <Text style={[styles.questTitle, { color: theme.text }]}>{quest.title}</Text>
-                    <Text style={[styles.questProgressText, { color: theme.textSecondary }]}>
-                      {quest.current_count} / {quest.target_count} {quest.unit} ({percent}%)
-                    </Text>
-                  </View>
-
-                  <View style={styles.questActions}>
-                    <SmoothPressable
-                      onPress={() => handleIncrement(quest, quest.unit === 'km' ? 2 : 10)}
-                      style={[styles.quickAddButton, { backgroundColor: theme.surface, borderColor: theme.border }]}
-                    >
-                      <Text style={[styles.quickAddText, { color: theme.accentCyan }]}>
-                        +{quest.unit === 'km' ? '2km' : '10'}
-                      </Text>
-                    </SmoothPressable>
-
-                    <SmoothPressable
-                      onPress={() => {
-                        setActiveQuest(quest);
-                        setLogAmount(quest.unit === 'km' ? '5' : '20');
-                      }}
-                      style={[styles.logButton, { backgroundColor: theme.surface, borderColor: theme.border }]}
-                    >
-                      <Ionicons name="create-outline" size={16} color={theme.textSecondary} />
-                    </SmoothPressable>
-                  </View>
-                </View>
-
-                {/* Progress bar */}
-                <View style={[styles.questProgressTrack, { backgroundColor: theme.surface }]}>
-                  <View
-                    style={[
-                      styles.questProgressFill,
-                      {
-                        width: `${percent}%`,
-                        backgroundColor: quest.completed ? theme.success : theme.tint,
-                      },
-                    ]}
-                  />
+                <Image source={currentAvatar.image} style={styles.topAvatarImg} resizeMode="cover" />
+              </View>
+            </View>
+            <View style={styles.topHunterInfo}>
+              <View style={styles.topNameRow}>
+                <Text style={[styles.topHunterName, { color: theme.text }]} numberOfLines={1}>
+                  {settings.nickname || 'John Mark Dalumpienes'}
+                </Text>
+                <View style={[styles.rankBadge, { backgroundColor: theme.tint }]}>
+                  <Text style={styles.rankBadgeText}>E-RANK</Text>
                 </View>
               </View>
-            );
-          })}
+              <Text style={[styles.topQuestSubtitle, { color: theme.textSecondary }]}>
+                {t('questSubtitle')}
+              </Text>
+            </View>
+          </SmoothPressable>
+
+          <View style={styles.topHunterActions}>
+            <SmoothPressable
+              onPress={() => router.push('/settings')}
+              style={[
+                styles.headerActionBtn,
+                { backgroundColor: theme.cardSecondary, borderColor: theme.border },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Open Settings"
+              hitSlop={8}
+            >
+              <Ionicons name="settings-sharp" size={18} color={theme.tint} />
+            </SmoothPressable>
+          </View>
         </View>
-      </View>
 
-      {/* 5. Dungeon Gate Raids Section */}
-      <View style={styles.questsSection}>
-        <View style={styles.sectionTitleRow}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Dungeon Gate Raids</Text>
-          <Text style={[styles.sectionActionText, { color: theme.accentCyan }]}>
-            {dungeonGates.filter((g) => g.defeated).length} / {dungeonGates.length} Cleared
-          </Text>
-        </View>
-
-        <View style={styles.gatesList}>
-          {dungeonGates.map((gate) => {
-            const hpPercent = Math.max(0, Math.min(100, Math.round((gate.current_hp / gate.total_hp) * 100)));
-            const isDefeated = gate.defeated;
-
-            return (
-              <SmoothPressable
-                key={gate.id}
-                onPress={() => setSelectedGate(gate)}
+        {/* 2. DAILY PEAK QUEST HERO CARD */}
+        <View
+          style={[
+            styles.dailyQuestCard,
+            { backgroundColor: theme.card, borderColor: theme.borderRose },
+          ]}
+        >
+          <View style={styles.dailyQuestRow}>
+            <View
+              style={[
+                styles.dailyQuestAvatarWrap,
+                { borderColor: theme.tint, shadowColor: theme.glow },
+              ]}
+            >
+              <Image
+                source={currentAvatar.image}
+                style={styles.dailyQuestAvatarImg}
+                resizeMode="cover"
+              />
+            </View>
+            <View style={styles.dailyQuestContent}>
+              <View style={styles.dailyQuestTagRow}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                  <Ionicons name="flash-outline" size={13} color={theme.accentAmber} />
+                  <Text style={[styles.dailyQuestTag, { color: theme.accentAmber }]}>
+                    {t('dailyPeakQuest')}
+                  </Text>
+                </View>
+              </View>
+              <Text style={[styles.dailyQuestQuote, { color: theme.text }]}>
+                {t('dailyPeakQuote')}
+              </Text>
+              <View
                 style={[
-                  styles.gateCard,
+                  styles.streakPill,
                   {
-                    backgroundColor: theme.card,
-                    borderColor: isDefeated ? theme.success : gate.rank.startsWith('S') ? theme.accentPurple : theme.border,
+                    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                    borderColor: '#F59E0B55',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 5,
                   },
                 ]}
               >
-                <View style={styles.gateTopRow}>
-                  <View style={[styles.rankTag, { backgroundColor: gate.rank.startsWith('S') ? 'rgba(168,85,247,0.2)' : 'rgba(56,189,248,0.15)' }]}>
-                    <Text style={[styles.rankTagText, { color: gate.rank.startsWith('S') ? theme.accentPurple : theme.accentCyan }]}>
-                      {gate.rank}
-                    </Text>
-                  </View>
-                  <Text style={[styles.gateTitle, { color: theme.text }]}>{gate.title}</Text>
-                  {isDefeated ? (
-                    <Ionicons name="checkmark-circle" size={20} color={theme.success} />
-                  ) : (
-                    <Ionicons name="skull" size={20} color={gate.rank.startsWith('S') ? theme.accentPurple : theme.tint} />
-                  )}
-                </View>
+                <Ionicons name="flame-outline" size={13} color="#F97316" />
+                <Text style={styles.streakPillText}>
+                  {t('hunterStreak')}: {hunter?.streak_days ?? 1} {t('days')}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
 
-                <View style={styles.bossInfoRow}>
-                  <View style={styles.bossLeft}>
-                    <Text style={[styles.bossName, { color: theme.textSecondary }]}>Boss: {gate.boss_name}</Text>
-                    <Text style={[styles.bossHpText, { color: isDefeated ? theme.textDim : theme.danger }]}>
-                      {isDefeated ? 'DEFEATED' : `${gate.current_hp} / ${gate.total_hp} HP`}
-                    </Text>
-                  </View>
-                  <View style={styles.gateReward}>
-                    <Text style={[styles.rewardExpText, { color: theme.accentCyan }]}>+{gate.reward_exp} EXP</Text>
-                  </View>
-                </View>
-
-                {/* HP Track */}
-                <View style={[styles.hpTrack, { backgroundColor: theme.surface }]}>
-                  <View
-                    style={[
-                      styles.hpFill,
-                      {
-                        width: `${hpPercent}%`,
-                        backgroundColor: isDefeated ? theme.textDim : theme.danger,
-                      },
-                    ]}
-                  />
-                </View>
+        {/* 3. SPLIT SELECTOR CARD: Dynamically shows selected program title and days */}
+        <View
+          style={[
+            styles.splitSelectorCard,
+            { backgroundColor: theme.card, borderColor: theme.borderRose },
+          ]}
+        >
+          {/* Day Navigation Header */}
+          <View style={styles.splitNavHeader}>
+            <View style={styles.splitNavLeft}>
+              <SmoothPressable
+                onPress={handlePrevDay}
+                hitSlop={10}
+                style={[
+                  styles.navArrowBtn,
+                  { backgroundColor: theme.cardSecondary, borderColor: theme.border },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Previous Protocol"
+              >
+                <Ionicons name="chevron-back" size={14} color={theme.tint} />
               </SmoothPressable>
-            );
-          })}
-        </View>
-      </View>
 
-      {/* 6. System AI Intelligence Card */}
-      <SmoothPressable
-        onPress={() => router.push('/chat' as Href)}
-        style={[styles.aiCard, { backgroundColor: theme.card, borderColor: theme.border }]}
-      >
-        <Ionicons
-          name={problem ? 'alert-circle-outline' : 'hardware-chip-outline'}
-          size={24}
-          color={problem ? theme.danger : theme.tint}
-        />
-        <View style={styles.aiCardText}>
-          <Text style={[styles.aiCardTitle, { color: theme.text }]}>System Intelligence ({providerLabel})</Text>
-          <Text style={{ color: theme.textSecondary, fontSize: 13 }}>
-            {problem ?? 'Online & Offline AI Coach Ready'} • {isOnline ? 'Network Connected' : '100% Offline Mode'}
-          </Text>
-        </View>
-        <Ionicons name="chatbubbles-outline" size={20} color={theme.tint} />
-      </SmoothPressable>
+              <View
+                style={[
+                  styles.splitBadgePill,
+                  { backgroundColor: theme.cardSecondary, borderColor: theme.border },
+                ]}
+              >
+                <Text style={[styles.splitBadgeText, { color: theme.tint }]}>
+                  {activeDay.dayBadge}
+                </Text>
+              </View>
 
-      {/* Custom Log Modal */}
-      <Modal visible={!!activeQuest} transparent animationType="fade" onRequestClose={() => setActiveQuest(null)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[styles.modalTitle, { color: theme.text }]}>Log {activeQuest?.title}</Text>
-            <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>
-              Enter reps or distance to add to your daily hunter objective.
+              <SmoothPressable
+                onPress={handleNextDay}
+                hitSlop={10}
+                style={[
+                  styles.navArrowBtn,
+                  { backgroundColor: theme.cardSecondary, borderColor: theme.border },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Next Protocol"
+              >
+                <Ionicons name="chevron-forward" size={14} color={theme.tint} />
+              </SmoothPressable>
+            </View>
+
+            <Text style={[styles.splitPercentText, { color: theme.tint }]}>
+              {completionPercentage}%
             </Text>
+          </View>
 
-            <TextInput
-              keyboardType="numeric"
-              value={logAmount}
-              onChangeText={setLogAmount}
-              placeholder="Amount"
-              placeholderTextColor={theme.textDim}
-              style={[styles.modalInput, { color: theme.text, backgroundColor: theme.surface, borderColor: theme.border }]}
+          {/* Main Program Title (dynamically updates with active program) */}
+          <Text style={[styles.splitMainTitle, { color: theme.text }]}>
+            {currentProgram.title}
+          </Text>
+
+          {/* DYNAMIC TABS: side-by-side equal width for <= 3 days; horizontal scroll for > 3 days */}
+          {splitDays.length <= 3 ? (
+            <View style={styles.threeTabsRow}>
+              {splitDays.map((day, idx) => {
+                const isSelected = safeDayIdx === idx;
+                return (
+                  <SmoothPressable
+                    key={day.id}
+                    onPress={() => setSelectedDayIdx(idx)}
+                    style={[
+                      styles.dayTabPill,
+                      isSelected ? styles.dayTabPillActive : styles.dayTabPillInactive,
+                    ]}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: isSelected }}
+                    accessibilityLabel={day.name}
+                  >
+                    <Text
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.75}
+                      style={[
+                        styles.dayTabPillText,
+                        isSelected ? styles.dayTabPillTextActive : styles.dayTabPillTextInactive,
+                      ]}
+                    >
+                      {day.shortTab}
+                    </Text>
+                  </SmoothPressable>
+                );
+              })}
+            </View>
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.scrollTabsRow}
+            >
+              {splitDays.map((day, idx) => {
+                const isSelected = safeDayIdx === idx;
+                return (
+                  <SmoothPressable
+                    key={day.id}
+                    onPress={() => setSelectedDayIdx(idx)}
+                    style={[
+                      styles.scrollTabPill,
+                      isSelected ? styles.dayTabPillActive : styles.dayTabPillInactive,
+                    ]}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: isSelected }}
+                    accessibilityLabel={day.name}
+                  >
+                    <Text
+                      numberOfLines={1}
+                      style={[
+                        styles.dayTabPillText,
+                        isSelected ? styles.dayTabPillTextActive : styles.dayTabPillTextInactive,
+                      ]}
+                    >
+                      {day.shortTab}
+                    </Text>
+                  </SmoothPressable>
+                );
+              })}
+            </ScrollView>
+          )}
+
+          {/* Bottom Progress Bar Line */}
+          <View style={[styles.progressBarTrack, { backgroundColor: theme.cardSecondary }]}>
+            <View
+              style={[
+                styles.progressBarFill,
+                { width: `${completionPercentage}%`, backgroundColor: '#EF4444' },
+              ]}
             />
-
-            <View style={styles.modalButtonsRow}>
-              <SmoothPressable
-                onPress={() => setActiveQuest(null)}
-                style={[styles.modalCancel, { borderColor: theme.border }]}
-              >
-                <Text style={{ color: theme.textSecondary, fontWeight: '600' }}>Cancel</Text>
-              </SmoothPressable>
-              <SmoothPressable
-                onPress={handleCustomLog}
-                style={[styles.modalConfirm, { backgroundColor: theme.tint }]}
-              >
-                <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>Confirm Progress</Text>
-              </SmoothPressable>
-            </View>
           </View>
         </View>
-      </Modal>
 
-      {/* Boss Raid Modal */}
-      <Modal visible={!!selectedGate} transparent animationType="slide" onRequestClose={() => setSelectedGate(null)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: theme.card, borderColor: theme.tint }]}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <View style={[styles.rankTag, { backgroundColor: 'rgba(56,189,248,0.15)' }]}>
-                <Text style={[styles.rankTagText, { color: theme.accentCyan }]}>{selectedGate?.rank}</Text>
-              </View>
-              <Text style={{ color: theme.danger, fontWeight: '800', fontSize: 13 }}>DUNGEON RAID BOSS</Text>
-            </View>
-
-            <Text style={[styles.modalTitle, { color: theme.text, marginTop: 4 }]}>{selectedGate?.boss_name}</Text>
-            <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>
-              {selectedGate?.title} • Reward: +{selectedGate?.reward_exp} EXP & &ldquo;{selectedGate?.reward_title}&rdquo;
+        {/* 4. TODAY'S TARGET PROTOCOL SECTION HEADER */}
+        <View style={styles.protocolHeaderRow}>
+          <View style={{ flex: 1, marginRight: 8 }}>
+            <Text style={[styles.protocolMainTitle, { color: theme.text }]}>
+              {t('todaysTargetProtocol')}
             </Text>
-
-            {/* Boss HP Bar */}
-            <View style={{ gap: 6, marginVertical: 8 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ color: theme.textSecondary, fontSize: 12 }}>Boss Life Gauge</Text>
-                <Text style={{ color: theme.danger, fontWeight: '700', fontSize: 12 }}>
-                  {selectedGate?.current_hp} / {selectedGate?.total_hp} HP
-                </Text>
-              </View>
-              <View style={[styles.hpTrack, { height: 10, backgroundColor: theme.surface }]}>
-                <View
-                  style={[
-                    styles.hpFill,
-                    {
-                      width: `${Math.max(
-                        0,
-                        Math.min(100, Math.round(((selectedGate?.current_hp ?? 0) / (selectedGate?.total_hp || 1)) * 100))
-                      )}%`,
-                      backgroundColor: theme.danger,
-                    },
-                  ]}
-                />
-              </View>
-            </View>
-
-            {!selectedGate?.defeated ? (
-              <>
-                <Text style={{ color: theme.textSecondary, fontSize: 12 }}>
-                  Enter damage dealt (via workout exertion volume, reps, or cardio km):
-                </Text>
-                <TextInput
-                  keyboardType="numeric"
-                  value={bossAttackPower}
-                  onChangeText={setBossAttackPower}
-                  placeholder="Strike Damage"
-                  placeholderTextColor={theme.textDim}
-                  style={[styles.modalInput, { color: theme.text, backgroundColor: theme.surface, borderColor: theme.border }]}
-                />
-              </>
-            ) : (
-              <View style={{ padding: 12, borderRadius: 10, backgroundColor: 'rgba(16,185,129,0.1)', alignItems: 'center' }}>
-                <Text style={{ color: theme.success, fontWeight: '700' }}>DUNGEON CONQUERED</Text>
-                <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 2 }}>
-                  You have already claimed this dungeon boss soul.
-                </Text>
-              </View>
-            )}
-
-            <View style={styles.modalButtonsRow}>
-              <SmoothPressable
-                onPress={() => setSelectedGate(null)}
-                style={[styles.modalCancel, { borderColor: theme.border }]}
-              >
-                <Text style={{ color: theme.textSecondary, fontWeight: '600' }}>Close Gate</Text>
-              </SmoothPressable>
-              {!selectedGate?.defeated && (
-                <SmoothPressable
-                  onPress={handleBossStrike}
-                  style={[styles.modalConfirm, { backgroundColor: theme.danger }]}
-                >
-                  <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>Unleash Strike ⚔️</Text>
-                </SmoothPressable>
-              )}
-            </View>
+            <Text style={[styles.protocolSubTitle, { color: theme.textSecondary }]}>
+              {t('targetMuscles')}: {activeDay.focus}
+            </Text>
           </View>
+          <Text style={[styles.setsDoneCounter, { color: theme.textSecondary }]}>
+            {completedSetsCount} / {totalSetsCount} {t('setsDone')}
+          </Text>
         </View>
-      </Modal>
-    </ScrollView>
+
+        {/* 5. EXERCISES LIST (loaded dynamically for the selected protocol day) */}
+        {groupedExercises.map((group) => {
+          return (
+            <View
+              key={group.name}
+              style={[
+                styles.exerciseCard,
+                { backgroundColor: theme.card, borderColor: theme.borderRose },
+              ]}
+            >
+              {/* Exercise Header: Title and Guide pill placed right beside each other */}
+              <SmoothPressable
+                onPress={() => setGuideExercise(group.name)}
+                style={styles.exerciseHeaderAdjacentRow}
+                accessibilityRole="button"
+                accessibilityLabel={`Open exercise guide for ${group.name}`}
+                hitSlop={6}
+              >
+                <Text style={[styles.exerciseCardTitle, { color: theme.text }]}>
+                  {group.name}
+                </Text>
+                <View style={styles.guidePillAdjacentBadge}>
+                  <Text style={styles.guidePillText}>{t('guide')} ℹ️</Text>
+                </View>
+              </SmoothPressable>
+
+              {/* Set Rows */}
+              {group.sets.map((setItem) => {
+                const isDone = setItem.completed;
+                return (
+                  <View
+                    key={setItem.id}
+                    style={[
+                      styles.setRow,
+                      {
+                        backgroundColor: isDone ? `${theme.tint}14` : 'transparent',
+                        borderColor: isDone ? `${theme.tint}40` : 'transparent',
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.setLabelText, { color: theme.textSecondary }]}>
+                      SET {setItem.set_number}
+                    </Text>
+
+                    {/* Weight (KG) Input */}
+                    <View style={styles.setInputGroup}>
+                      <TextInput
+                        style={[
+                          styles.numInputBox,
+                          {
+                            backgroundColor: theme.cardSecondary,
+                            borderColor: theme.border,
+                            color: theme.text,
+                          },
+                        ]}
+                        value={String(setItem.weight_kg)}
+                        onChangeText={(t) => handleChangeWeight(setItem.id, t)}
+                        keyboardType="numeric"
+                        maxLength={5}
+                        selectTextOnFocus
+                      />
+                      <Text style={[styles.inputUnitLabel, { color: theme.textSecondary }]}>KG</Text>
+                    </View>
+
+                    {/* Reps Input */}
+                    <View style={styles.setInputGroup}>
+                      <TextInput
+                        style={[
+                          styles.numInputBox,
+                          {
+                            backgroundColor: theme.cardSecondary,
+                            borderColor: theme.border,
+                            color: theme.text,
+                          },
+                        ]}
+                        value={String(setItem.reps)}
+                        onChangeText={(t) => handleChangeReps(setItem.id, t)}
+                        keyboardType="numeric"
+                        maxLength={4}
+                        selectTextOnFocus
+                      />
+                      <Text style={[styles.inputUnitLabel, { color: theme.textSecondary }]}>
+                        REPS
+                      </Text>
+                    </View>
+
+                    {/* Completion Checkbox */}
+                    <SmoothPressable
+                      onPress={() => handleToggleSet(setItem)}
+                      style={[
+                        styles.checkboxBtn,
+                        {
+                          backgroundColor: isDone ? theme.tint : theme.cardSecondary,
+                          borderColor: isDone ? theme.tint : theme.border,
+                          shadowColor: isDone ? theme.tint : 'transparent',
+                        },
+                      ]}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: isDone }}
+                      accessibilityLabel={`Set ${setItem.set_number} ${isDone ? 'completed' : 'incomplete'}`}
+                      hitSlop={6}
+                    >
+                      {isDone && <Ionicons name="checkmark" size={17} color="#FFFFFF" />}
+                    </SmoothPressable>
+                  </View>
+                );
+              })}
+            </View>
+          );
+        })}
+
+        {/* 6. BIG ACTION BUTTON: SAVE & FINISH WORKOUT SESSION */}
+        <SmoothPressable
+          onPress={handleSaveAndFinish}
+          style={[
+            styles.saveFinishBtn,
+            {
+              backgroundColor: theme.tint,
+              shadowColor: theme.glow,
+            },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Save & Finish Workout Session"
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            <Ionicons name="checkmark-done" size={18} color="#FFFFFF" />
+            <Text style={styles.saveFinishBtnText}>{t('saveWorkout')}</Text>
+          </View>
+        </SmoothPressable>
+
+        <View style={{ height: 95 }} />
+      </ScrollView>
+
+      {/* EXERCISE COACHING GUIDE MODAL */}
+      <ExerciseGuideModal
+        exerciseName={guideExercise}
+        onClose={() => setGuideExercise(null)}
+      />
+
+      {/* PRIME AWAKENING PROFILE MODAL */}
+      <PrimeAwakeningModal
+        visible={awakeningOpen}
+        onClose={() => setAwakeningOpen(false)}
+        onSave={() => loadProfile()}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  scrollContent: { padding: 16, gap: 16, paddingBottom: 100 },
+  root: {
+    flex: 1,
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+  },
 
-  // Profile Header
-  topProfileRow: {
+  // 1. TOP HUNTER BAR
+  topHunterBar: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    marginBottom: 14,
   },
-  profileLeft: {
+  topHunterLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    flex: 1,
+    marginRight: 10,
   },
-  avatarCircle: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+  topAvatarWrapper: {
+    marginRight: 10,
+    borderRadius: 28,
+    padding: 2,
     borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  profileInfo: {
-    gap: 2,
-  },
-  nameRankRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  hunterName: {
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  rankPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-    borderWidth: 1,
-  },
-  rankPillText: {
-    fontSize: 10,
-    fontWeight: '800',
-  },
-  questSubtitle: {
-    fontSize: 12,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-
-  // Hero Card: DAILY PEAK QUEST
-  heroCard: {
-    borderRadius: 20,
-    borderWidth: 1.5,
-    padding: 18,
-    gap: 12,
-    shadowColor: '#8B5CF6',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 16,
-    elevation: 4,
-  },
-  heroHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  heroBadgeText: {
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 1.2,
-  },
-  heroBodyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  emblemIcon: {
+  topAvatarCircle: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderWidth: 2,
+    overflow: 'hidden',
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 10,
+    shadowOpacity: 0.85,
+    elevation: 5,
   },
-  quoteText: {
+  topAvatarImg: {
+    width: '100%',
+    height: '100%',
+  },
+  topHunterInfo: {
     flex: 1,
-    fontSize: 14,
-    fontWeight: '600',
-    lineHeight: 20,
   },
-  heroFooter: {
-    flexDirection: 'row',
-  },
-  streakPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  streakText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-
-  // Training Banner
-  trainingBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 18,
-    borderWidth: 1.5,
-    gap: 14,
-  },
-  bannerIconBlock: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bannerTextBlock: {
-    flex: 1,
-    gap: 4,
-  },
-  bannerTopLine: {
+  topNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  bannerTitle: {
-    fontSize: 16,
-    fontWeight: '800',
+  topHunterName: {
+    fontSize: 19,
+    fontWeight: '900',
+    letterSpacing: 0.2,
+    maxWidth: '75%',
   },
-  activeTag: {
-    paddingHorizontal: 6,
+  rankBadge: {
+    paddingHorizontal: 7,
     paddingVertical: 2,
-    borderRadius: 4,
+    borderRadius: 5,
   },
-  activeTagText: {
+  rankBadgeText: {
     color: '#FFFFFF',
-    fontSize: 9,
-    fontWeight: '800',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.6,
   },
-  bannerSubtitle: {
-    fontSize: 12,
+  topQuestSubtitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  topHunterActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerActionBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 1.2,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
-  // Quests Section
-  questsSection: {
-    gap: 12,
+  // 2. DAILY PEAK QUEST CARD
+  dailyQuestCard: {
+    borderRadius: 18,
+    borderWidth: 1.2,
+    padding: 16,
+    marginBottom: 14,
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 12,
+    shadowOpacity: 0.45,
+    elevation: 3,
   },
-  sectionTitleRow: {
+  dailyQuestRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 14,
   },
-  sectionTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    letterSpacing: 0.2,
+  dailyQuestAvatarWrap: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    borderWidth: 2,
+    overflow: 'hidden',
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 10,
+    shadowOpacity: 0.7,
+    elevation: 4,
   },
-  sectionActionText: {
-    fontSize: 12,
-    fontWeight: '600',
+  dailyQuestAvatarImg: {
+    width: '100%',
+    height: '100%',
   },
-  questsList: {
-    gap: 10,
-  },
-  questCard: {
-    borderRadius: 16,
-    borderWidth: 1.5,
-    padding: 14,
-    gap: 10,
-  },
-  questTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  questInfo: {
+  dailyQuestContent: {
     flex: 1,
-    gap: 3,
   },
-  questTitle: {
-    fontSize: 15,
+  dailyQuestTagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  dailyQuestTag: {
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+  },
+  dailyQuestQuote: {
+    fontSize: 14,
     fontWeight: '700',
+    fontStyle: 'italic',
+    lineHeight: 19,
+    marginBottom: 8,
   },
-  questProgressText: {
+  streakPill: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  streakPillText: {
+    color: '#F59E0B',
     fontSize: 12,
+    fontWeight: '800',
   },
-  questActions: {
+
+  // 3. SPLIT SELECTOR CARD
+  splitSelectorCard: {
+    borderRadius: 18,
+    borderWidth: 1.2,
+    padding: 16,
+    marginBottom: 16,
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 12,
+    shadowOpacity: 0.45,
+    elevation: 3,
+  },
+  splitNavHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  splitNavLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
-  quickAddButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
+  navArrowBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  splitBadgePill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
     borderWidth: 1,
   },
-  quickAddText: {
+  splitBadgeText: {
     fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  splitPercentText: {
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  splitMainTitle: {
+    fontSize: 21,
+    fontWeight: '900',
+    marginBottom: 12,
+    letterSpacing: 0.2,
+  },
+  threeTabsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 14,
+  },
+  scrollTabsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 14,
+    paddingRight: 10,
+  },
+  dayTabPill: {
+    flex: 1,
+    paddingVertical: 9,
+    paddingHorizontal: 4,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scrollTabPill: {
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dayTabPillActive: {
+    backgroundColor: '#EF4444',
+    borderWidth: 1.5,
+    borderColor: '#F97316',
+    shadowColor: '#F97316',
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
+    shadowOpacity: 0.8,
+    elevation: 5,
+  },
+  dayTabPillInactive: {
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  dayTabPillText: {
+    fontSize: 12.5,
+    letterSpacing: 0.2,
+  },
+  dayTabPillTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '900',
+  },
+  dayTabPillTextInactive: {
+    color: '#B7AAB0',
     fontWeight: '700',
   },
-  logButton: {
-    padding: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  questProgressTrack: {
-    height: 5,
-    borderRadius: 2.5,
+  progressBarTrack: {
+    height: 4,
+    borderRadius: 2,
     overflow: 'hidden',
-    width: '100%',
+    marginTop: 2,
   },
-  questProgressFill: {
+  progressBarFill: {
     height: '100%',
-    borderRadius: 2.5,
+    borderRadius: 2,
   },
 
-  // Gates List
-  gatesList: {
-    gap: 12,
+  // 4. PROTOCOL SECTION HEADER
+  protocolHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
   },
-  gateCard: {
+  protocolMainTitle: {
+    fontSize: 19.5,
+    fontWeight: '900',
+  },
+  protocolSubTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  setsDoneCounter: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+
+  // 5. EXERCISE CARD
+  exerciseCard: {
     borderRadius: 16,
-    borderWidth: 1.5,
+    borderWidth: 1.2,
     padding: 14,
-    gap: 8,
+    marginBottom: 14,
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 10,
+    shadowOpacity: 0.35,
+    elevation: 2,
   },
-  gateTopRow: {
+  exerciseHeaderAdjacentRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    marginBottom: 12,
+    alignSelf: 'flex-start',
+    flexWrap: 'wrap',
   },
-  rankTag: {
+  exerciseCardTitle: {
+    fontSize: 17.5,
+    fontWeight: '800',
+  },
+  guidePillAdjacentBadge: {
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    borderColor: '#F59E0B',
+    borderWidth: 1,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
   },
-  rankTagText: {
-    fontSize: 11,
+  guidePillText: {
+    color: '#F59E0B',
+    fontSize: 12,
     fontWeight: '800',
   },
-  gateTitle: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  bossInfoRow: {
+
+  // SET ROW
+  setRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 6,
   },
-  bossLeft: {
-    gap: 2,
-  },
-  bossName: {
-    fontSize: 12,
-  },
-  bossHpText: {
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  gateReward: {
-    alignItems: 'flex-end',
-  },
-  rewardExpText: {
+  setLabelText: {
     fontSize: 13,
     fontWeight: '800',
+    width: 48,
   },
-  hpTrack: {
-    height: 6,
-    borderRadius: 3,
-    overflow: 'hidden',
-    width: '100%',
-  },
-  hpFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-
-  // AI Card
-  aiCard: {
+  setInputGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    borderRadius: 16,
+    gap: 6,
+  },
+  numInputBox: {
+    width: 64,
+    height: 40,
+    borderRadius: 10,
     borderWidth: 1.5,
-    gap: 12,
-  },
-  aiCardText: {
-    flex: 1,
-    gap: 3,
-  },
-  aiCardTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-
-  // Modal
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(5, 3, 10, 0.75)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 380,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    padding: 20,
-    gap: 14,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  modalSubtitle: {
-    fontSize: 13,
-  },
-  modalInput: {
-    height: 48,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 16,
+    textAlign: 'center',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
+    paddingVertical: 0,
   },
-  modalButtonsRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 10,
+  inputUnitLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    width: 38,
   },
-  modalCancel: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
+  checkboxBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 6,
+    shadowOpacity: 0.6,
+    elevation: 3,
   },
-  modalConfirm: {
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 10,
+
+  // 6. SAVE & FINISH BUTTON
+  saveFinishBtn: {
+    height: 52,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+    marginBottom: 16,
+    shadowOffset: { width: 0, height: 14 },
+    shadowRadius: 14,
+    shadowOpacity: 0.75,
+    elevation: 6,
+  },
+  saveFinishBtnText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 0.3,
   },
 });

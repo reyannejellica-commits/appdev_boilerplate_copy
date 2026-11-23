@@ -13,7 +13,7 @@ export function AudioChip({ uri, isUser }: { uri: string; isUser: boolean }) {
   const theme = useTheme();
   const player = useAudioPlayer(uri);
   const status = useAudioPlayerStatus(player);
-  const color = isUser ? '#FFFFFF' : theme.textSecondary;
+  const color = isUser ? theme.userBubbleText : theme.textSecondary;
 
   const toggle = () => {
     if (status.playing) {
@@ -39,12 +39,12 @@ export function AudioChip({ uri, isUser }: { uri: string; isUser: boolean }) {
           status.playing ? 'Pause voice message' : 'Play voice message'
         }
         hitSlop={10}
-        style={[styles.button, { backgroundColor: isUser ? '#004A99' : theme.buttonPrimary }]}
+        style={[styles.button, { backgroundColor: isUser ? theme.tintDark : theme.buttonPrimary }]}
       >
         <Ionicons
           name={status.playing ? 'pause' : 'play'}
           size={14}
-          color="#FFFFFF"
+          color={isUser ? '#FFFFFF' : theme.buttonPrimaryText}
         />
       </SmoothPressable>
       <Text style={[styles.time, { color }]}>{mmss(shown)}</Text>

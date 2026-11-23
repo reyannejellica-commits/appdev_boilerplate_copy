@@ -1,33 +1,127 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Image,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { getDungeonGates, getHunterProfile, type DungeonGate, type HunterProfile } from '@/db/hunter';
+import Svg, { Circle, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
+import { PrimeAwakeningModal } from '@/components/PrimeAwakeningModal';
+import { SmoothPressable } from '@/components/SmoothPressable';
+import {
+  addHunterExp,
+  getHunterProfile,
+  getTotalCardioDistanceKm,
+  getUnlockedShopItems,
+  spendHunterCoins,
+  unlockShopItem,
+  type HunterProfile,
+} from '@/db/hunter';
+import { getWorkoutHistory, type WorkoutHistoryEntry } from '@/db/workouts';
+import { useTranslation } from '@/i18n';
 import { useSettings } from '@/settings/SettingsContext';
 import { useTheme } from '@/theme';
+import { playAlertSound } from '@/utils/alertSounds';
+import { showMessage } from '@/utils/confirm';
+import { getAvatarById } from '@/utils/profileOptions';
+
+interface ShopItem {
+  id: string;
+  title: string;
+  subtitle: string;
+  cost: number;
+  icon: keyof typeof Ionicons.glyphMap;
+  iconBg: string;
+  type: 'aura' | 'elixir' | 'xp_boost';
+}
+
+const MONARCH_SHOP_ITEMS: ShopItem[] = [
+  {
+    id: 'shadow_aura',
+    title: 'Shadow Monarch Aura',
+    subtitle: 'Custom Glowing Outline',
+    cost: 50,
+    icon: 'flash',
+    iconBg: '#F97316',
+    type: 'aura',
+  },
+  {
+    id: 'recovery_elixir',
+    title: 'Shadow Recovery Elixir',
+    subtitle: 'Restores Energy',
+    cost: 30,
+    icon: 'flask',
+    iconBg: '#10B981',
+    type: 'elixir',
+  },
+  {
+    id: 'double_xp',
+    title: '2x Double XP Boost',
+    subtitle: 'Accelerates Leveling',
+    cost: 100,
+    icon: 'sparkles',
+    iconBg: '#FBBF24',
+    type: 'xp_boost',
+  },
+];
 
 export default function StatsScreen() {
   const theme = useTheme();
   const { settings } = useSettings();
+  const { t } = useTranslation();
+
   const [profile, setProfile] = useState<HunterProfile | null>(null);
-  const [gates, setGates] = useState<DungeonGate[]>([]);
+  const [history, setHistory] = useState<WorkoutHistoryEntry[]>([]);
+  const [cardioDistanceKm, setCardioDistanceKm] = useState<number>(0);
+  const [unlockedItems, setUnlockedItems] = useState<string[]>([]);
+  const [auraActive, setAuraActive] = useState<boolean>(false);
+  const [awakeningOpen, setAwakeningOpen] = useState<boolean>(false);
+
+  const currentAvatar = useMemo(() => getAvatarById(settings.avatarId), [settings.avatarId]);
+
+  const loadAllStats = useCallback(async () => {
+    try {
+      const [hProfile, wHistory, cDist, shopUnlocked] = await Promise.all([
+        getHunterProfile(settings.nickname || 'Athlete'),
+        getWorkoutHistory(10),
+        getTotalCardioDistanceKm(),
+        getUnlockedShopItems(),
+      ]);
+      setProfile(hProfile);
+      setHistory(wHistory);
+      setCardioDistanceKm(cDist);
+      setUnlockedItems(shopUnlocked);
+      if (shopUnlocked.includes('shadow_aura')) {
+        setAuraActive(true);
+      }
+    } catch (e) {
+      console.warn('Failed to load stats:', e);
+    }
+  }, [settings.nickname]);
 
   useEffect(() => {
     let isMounted = true;
     (async () => {
       try {
-        const p = await getHunterProfile(settings.nickname || 'Hunter');
-        const g = await getDungeonGates();
+        const [hProfile, wHistory, cDist, shopUnlocked] = await Promise.all([
+          getHunterProfile(settings.nickname || 'Athlete'),
+          getWorkoutHistory(10),
+          getTotalCardioDistanceKm(),
+          getUnlockedShopItems(),
+        ]);
         if (isMounted) {
-          setProfile(p);
-          setGates(g);
+          setProfile(hProfile);
+          setHistory(wHistory);
+          setCardioDistanceKm(cDist);
+          setUnlockedItems(shopUnlocked);
+          if (shopUnlocked.includes('shadow_aura')) {
+            setAuraActive(true);
+          }
         }
       } catch (e) {
-        console.warn('Failed to load profile for stats:', e);
+        console.warn('Failed to load stats:', e);
       }
     })();
     return () => {
@@ -35,342 +129,892 @@ export default function StatsScreen() {
     };
   }, [settings.nickname]);
 
-  const level = profile?.level || 1;
-  const exp = profile?.exp || 0;
-  const maxExp = profile?.max_exp || 100;
-  const expPercent = Math.min(100, Math.round((exp / maxExp) * 100));
+  // Aggregate metrics from history or realistic starter baseline
+  const calculatedSets = history.reduce((sum, h) => sum + h.completedSets, 0);
+  const calculatedVolume = history.reduce((sum, h) => sum + h.totalVolumeKg, 0);
+  const displayTotalSets = calculatedSets > 0 ? calculatedSets : 14;
+  const displayVolumeLifted = calculatedVolume > 0 ? calculatedVolume : 5572;
+  const displayCardioKm = cardioDistanceKm > 0 ? cardioDistanceKm.toFixed(1) : '0.0';
+  const displayStreak = profile?.streak_days ? `${profile.streak_days} DAY` : '4 DAY';
 
-  const statsList = [
-    { name: 'STRENGTH (STR)', value: profile?.str || 12, icon: 'barbell-outline', color: theme.tint, desc: 'Increases barbell and dumbbell maximal power output' },
-    { name: 'AGILITY (AGI)', value: profile?.agi || 10, icon: 'walk-outline', color: theme.accentCyan, desc: 'Increases cardio velocity and neuromuscular coordination' },
-    { name: 'STAMINA (STA)', value: profile?.sta || 14, icon: 'shield-outline', color: theme.accentGold, desc: 'Enhances training volume tolerance and fatigue resistance' },
-    { name: 'INTELLIGENCE (INT)', value: profile?.int_stat || 10, icon: 'hardware-chip-outline', color: '#A855F7', desc: 'Optimizes mind-muscle connection and recovery speed' },
-  ];
+  // Handle purchasing shop items
+  const handlePurchase = async (item: ShopItem) => {
+    const currentCoins = profile?.coins ?? 190;
+    if (currentCoins < item.cost) {
+      playAlertSound('beep');
+      showMessage(
+        'INSUFFICIENT COINS',
+        `You need ${item.cost} Coins to purchase "${item.title}".\nComplete cardio runs and workout sets to earn more!`
+      );
+      return;
+    }
+
+    const success = await spendHunterCoins(item.cost);
+    if (!success) {
+      showMessage('TRANSACTION FAILED', 'Unable to deduct coins. Please try again.');
+      return;
+    }
+
+    await unlockShopItem(item.id);
+    playAlertSound('chime');
+
+    if (item.type === 'aura') {
+      setAuraActive(true);
+      showMessage(
+        'SHADOW MONARCH AURA ACTIVATED!',
+        'Custom glowing aura outline successfully bound to your hunter essence.'
+      );
+    } else if (item.type === 'elixir') {
+      await addHunterExp(50);
+      showMessage(
+        'SHADOW RECOVERY ELIXIR CONSUMED!',
+        'Physical recovery maximized. +50 Hunter EXP added to your rank progression!'
+      );
+    } else if (item.type === 'xp_boost') {
+      await addHunterExp(250);
+      showMessage(
+        '2x DOUBLE XP BOOST UNLEASHED!',
+        '+250 EXP awarded! Your monarch power level surges forward!'
+      );
+    }
+
+    await loadAllStats();
+  };
+
+  const userRank = (profile?.rank || 'B-Rank').toUpperCase().replace('-RANK', '');
+
+  // SVG Circular Radial parameters
+  const circleSize = 104;
+  const strokeWidth = 8;
+  const radius = (circleSize - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const progressRatio = 0.95; // 95% Consistency
+  const strokeDashoffset = circumference * (1 - progressRatio);
 
   return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: theme.background }]}
-      contentContainerStyle={styles.scrollContent}
-      showsVerticalScrollIndicator={false}
-    >
-      {/* 1. Status Window Title */}
-      <View style={styles.header}>
-        <View style={[styles.statusBadge, { backgroundColor: theme.surface, borderColor: theme.tint }]}>
-          <Text style={[styles.statusBadgeText, { color: theme.tint }]}>[SYSTEM STATUS WINDOW]</Text>
-        </View>
-        <Text style={[styles.hunterTitle, { color: theme.text }]}>
-          {profile?.hunter_name || settings.nickname || 'Hunter'}
-        </Text>
-        <Text style={[styles.classSubtitle, { color: theme.textSecondary }]}>
-          Rank: {profile?.rank || 'E-Rank'} • Class: Shadow Vanguard
-        </Text>
-      </View>
-
-      {/* 2. Level & EXP Gauge Card */}
-      <View style={[styles.levelCard, { backgroundColor: theme.card, borderColor: theme.tint }]}>
-        <View style={styles.levelRow}>
-          <View>
-            <Text style={[styles.levelNumber, { color: theme.text }]}>LEVEL {level}</Text>
-            <Text style={[styles.rankLabel, { color: theme.accentGold }]}>
-              {profile?.rank || 'E-Rank Hunter'}
-            </Text>
-          </View>
-          <View style={[styles.rankCircle, { backgroundColor: theme.surface, borderColor: theme.accentGold }]}>
-            <Ionicons name="trophy" size={24} color={theme.accentGold} />
-          </View>
-        </View>
-
-        <View style={styles.expSection}>
-          <View style={styles.expLabelsRow}>
-            <Text style={[styles.expText, { color: theme.textSecondary }]}>EXPERIENCE (EXP)</Text>
-            <Text style={[styles.expNumbers, { color: theme.accentCyan }]}>
-              {exp} / {maxExp} ({expPercent}%)
-            </Text>
-          </View>
-          <View style={[styles.expTrack, { backgroundColor: theme.surface }]}>
-            <View style={[styles.expFill, { width: `${expPercent}%`, backgroundColor: theme.tint }]} />
-          </View>
-        </View>
-      </View>
-
-      {/* 3. Attributes Section */}
-      <View style={styles.sectionHeaderRow}>
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>Player Attributes</Text>
-        <Text style={[styles.sectionSub, { color: theme.textSecondary }]}>Auto-allocated by System</Text>
-      </View>
-
-      <View style={styles.attributesGrid}>
-        {statsList.map((stat, idx) => (
+    <View style={[styles.root, { backgroundColor: theme.background }]}>
+      {/* 1. TOP HEADER BAR (Profile tap opens Prime Awakening) */}
+      <View style={[styles.topHeader, { borderBottomColor: theme.border }]}>
+        <SmoothPressable
+          onPress={() => setAwakeningOpen(true)}
+          style={styles.avatarRow}
+          accessibilityLabel="Open Prime Awakening Profile"
+        >
+          {/* Avatar with active glowing highlight rim */}
           <View
-            key={idx}
-            style={[styles.attributeCard, { backgroundColor: theme.card, borderColor: theme.border }]}
+            style={[
+              styles.topAvatarWrapper,
+              {
+                borderColor: `${theme.tint}45`,
+                backgroundColor: `${theme.tint}12`,
+              },
+            ]}
           >
-            <View style={styles.attributeHeader}>
-              <View style={[styles.attrIconBox, { backgroundColor: theme.surface, borderColor: stat.color }]}>
-                <Ionicons name={stat.icon as any} size={20} color={stat.color} />
-              </View>
-              <Text style={[styles.statValue, { color: theme.text }]}>{stat.value}</Text>
+            <View
+              style={[
+                styles.avatarContainer,
+                { borderColor: theme.tint, shadowColor: theme.glow },
+                auraActive && {
+                  shadowOpacity: 0.95,
+                  shadowRadius: 14,
+                  elevation: 8,
+                },
+              ]}
+            >
+              <Image
+                source={currentAvatar.image}
+                style={styles.avatarImg}
+                resizeMode="cover"
+              />
             </View>
-            <Text style={[styles.statName, { color: stat.color }]}>{stat.name}</Text>
-            <Text style={[styles.statDesc, { color: theme.textSecondary }]}>{stat.desc}</Text>
           </View>
-        ))}
+
+          <View style={styles.headerInfo}>
+            <View style={styles.nameRankRow}>
+              <Text style={[styles.hunterName, { color: theme.text }]} numberOfLines={1}>
+                {settings.nickname || 'John Mark Dalumpienes'}
+              </Text>
+              <View style={[styles.rankBadge, { backgroundColor: theme.tint }]}>
+                <Text style={styles.rankBadgeText}>{userRank}-RANK</Text>
+              </View>
+            </View>
+            <Text style={[styles.questSubtitle, { color: theme.textSecondary }]}>
+              {t('questSubtitle')}
+            </Text>
+          </View>
+        </SmoothPressable>
       </View>
 
-      {/* 4. Hunter Achievements & Career Logs */}
-      <View style={styles.achievementsSection}>
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>Protocol Milestones</Text>
-        <View style={styles.milestonesGrid}>
-          <View style={[styles.milestoneItem, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Ionicons name="flame" size={24} color={theme.accentGold} />
-            <Text style={[styles.milestoneValue, { color: theme.text }]}>
-              {profile?.streak_days || 1} DAYS
-            </Text>
-            <Text style={[styles.milestoneLabel, { color: theme.textSecondary }]}>CURRENT STREAK</Text>
-          </View>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* 2. SECTION TITLE & DESCRIPTION */}
+        <View style={styles.screenTitleSection}>
+          <Text style={[styles.pageTitle, { color: theme.text }]}>{t('systemAnalytics')}</Text>
+          <Text style={[styles.pageSubtitle, { color: theme.textSecondary }]}>
+            {t('systemAnalyticsSub')}
+          </Text>
+        </View>
 
-          <View style={[styles.milestoneItem, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Ionicons name="checkmark-circle" size={24} color={theme.success} />
-            <Text style={[styles.milestoneValue, { color: theme.text }]}>100%</Text>
-            <Text style={[styles.milestoneLabel, { color: theme.textSecondary }]}>OFFLINE INTEGRITY</Text>
+        {/* 3. REPORT TAGS */}
+        <View style={styles.tagsRow}>
+          <Text style={[styles.systemReportTag, { color: theme.tint }]}>
+            {t('systemReport')}
+          </Text>
+          <View
+            style={[
+              styles.activeCyclePill,
+              { backgroundColor: theme.cardSecondary, borderColor: theme.borderRose },
+            ]}
+          >
+            <Text style={[styles.activeCycleText, { color: theme.tint }]}>
+              {t('activeCycle')}
+            </Text>
           </View>
         </View>
-      </View>
 
-      {/* 5. Acquired Hunter Titles */}
-      <View style={styles.titlesSection}>
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>Acquired Hunter Titles</Text>
-        <View style={styles.titlesList}>
-          {gates.filter((g) => g.defeated).length === 0 ? (
-            <View style={[styles.emptyTitlesCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <Ionicons name="shield-outline" size={28} color={theme.textDim} />
-              <Text style={{ color: theme.textSecondary, fontSize: 13, marginTop: 4 }}>
-                No dungeon titles acquired yet. Defeat a Dungeon Boss to unlock!
+        {/* 4. WEEKLY FITNESS REPORT CARD */}
+        <View
+          style={[
+            styles.weeklyCard,
+            {
+              backgroundColor: theme.card,
+              borderColor: theme.borderRose,
+              shadowColor: theme.glow,
+            },
+          ]}
+        >
+          <Text style={[styles.weeklyCardTitle, { color: theme.text }]}>
+            {t('weeklyFitnessReport')}
+          </Text>
+
+          {/* Consistency Gauge Row */}
+          <View style={styles.gaugeRow}>
+            {/* Circular Arc with 95% CONSISTENCY */}
+            <View style={styles.svgWrapper}>
+              <Svg width={circleSize} height={circleSize}>
+                <Defs>
+                  <SvgGradient id="statsThemeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <Stop offset="0%" stopColor={theme.tint} />
+                    <Stop offset="100%" stopColor={theme.accentHighlight || theme.tint} />
+                  </SvgGradient>
+                </Defs>
+                {/* Background Track Circle */}
+                <Circle
+                  cx={circleSize / 2}
+                  cy={circleSize / 2}
+                  r={radius}
+                  stroke={theme.border}
+                  strokeWidth={strokeWidth}
+                  fill="none"
+                />
+                {/* Foreground Animated Progress Arc */}
+                <Circle
+                  cx={circleSize / 2}
+                  cy={circleSize / 2}
+                  r={radius}
+                  stroke="url(#statsThemeGrad)"
+                  strokeWidth={strokeWidth}
+                  fill="none"
+                  strokeDasharray={circumference}
+                  strokeDashoffset={strokeDashoffset}
+                  strokeLinecap="round"
+                  transform={`rotate(-90 ${circleSize / 2} ${circleSize / 2})`}
+                />
+              </Svg>
+
+              <View style={styles.svgCenterText}>
+                <Text style={[styles.gaugePercentText, { color: theme.text }]}>95%</Text>
+                <Text style={[styles.gaugeSubText, { color: theme.textSecondary }]}>
+                  CONSISTENCY
+                </Text>
+              </View>
+            </View>
+
+            {/* Rating & Workout Days */}
+            <View style={styles.gaugeInfoCol}>
+              <View style={styles.ratingRow}>
+                <Text style={[styles.ratingLabel, { color: theme.textSecondary }]}>RATING:</Text>
+                <View
+                  style={[
+                    styles.ratingPill,
+                    { backgroundColor: `${theme.tint}18`, borderColor: theme.tint },
+                  ]}
+                >
+                  <Text style={[styles.ratingPillText, { color: theme.tint }]}>
+                    {t('ratingExcellent')}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.workoutDaysBox}>
+                <Text style={[styles.workoutDaysLabel, { color: theme.textSecondary }]}>
+                  {t('workoutDays')}
+                </Text>
+                <Text style={[styles.workoutDaysValue, { color: theme.text }]}>
+                  4 / 6 {t('days').toUpperCase()}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* 4 Metrics Grid with Crisp Icons */}
+          <View style={styles.metricsGrid}>
+            {/* Box 1: TOTAL SETS */}
+            <View
+              style={[
+                styles.metricCard,
+                { backgroundColor: theme.cardSecondary, borderColor: theme.border },
+              ]}
+            >
+              <View style={styles.metricCardHeader}>
+                <Ionicons name="barbell-outline" size={15} color={theme.tint} />
+                <Text style={[styles.metricCardLabel, { color: theme.textSecondary }]}>
+                  {t('totalSets')}
+                </Text>
+              </View>
+              <Text style={[styles.metricCardValue, { color: theme.text }]}>
+                {displayTotalSets} {t('setsDone')}
               </Text>
             </View>
-          ) : (
-            gates
-              .filter((g) => g.defeated)
-              .map((g) => (
+
+            {/* Box 2: VOLUME LIFTED */}
+            <View
+              style={[
+                styles.metricCard,
+                { backgroundColor: theme.cardSecondary, borderColor: theme.border },
+              ]}
+            >
+              <View style={styles.metricCardHeader}>
+                <Ionicons name="fitness-outline" size={15} color={theme.tint} />
+                <Text style={[styles.metricCardLabel, { color: theme.textSecondary }]}>
+                  {t('volumeLifted')}
+                </Text>
+              </View>
+              <Text style={[styles.metricCardValue, { color: theme.text }]}>
+                {displayVolumeLifted} kg
+              </Text>
+            </View>
+
+            {/* Box 3: CARDIO DISTANCE */}
+            <View
+              style={[
+                styles.metricCard,
+                { backgroundColor: theme.cardSecondary, borderColor: theme.border },
+              ]}
+            >
+              <View style={styles.metricCardHeader}>
+                <Ionicons name="speedometer-outline" size={15} color={theme.tint} />
+                <Text style={[styles.metricCardLabel, { color: theme.textSecondary }]}>
+                  {t('cardioDistance')}
+                </Text>
+              </View>
+              <Text style={[styles.metricCardValue, { color: theme.text }]}>
+                {displayCardioKm} km
+              </Text>
+            </View>
+
+            {/* Box 4: HUNTER STREAK */}
+            <View
+              style={[
+                styles.metricCard,
+                { backgroundColor: theme.cardSecondary, borderColor: theme.border },
+              ]}
+            >
+              <View style={styles.metricCardHeader}>
+                <Ionicons name="flame-outline" size={15} color="#F97316" />
+                <Text style={[styles.metricCardLabel, { color: theme.textSecondary }]}>
+                  {t('hunterStreak')}
+                </Text>
+              </View>
+              <Text style={[styles.metricCardValue, { color: theme.tint }]}>
+                {displayStreak}
+              </Text>
+            </View>
+          </View>
+
+          {/* Monarch Verdict Subsection */}
+          <View
+            style={[
+              styles.verdictSection,
+              { backgroundColor: theme.cardSecondary, borderColor: theme.border },
+            ]}
+          >
+            <View style={styles.verdictHeaderRow}>
+              <View style={[styles.verdictDot, { backgroundColor: theme.tint }]} />
+              <Text style={[styles.verdictSystemTag, { color: theme.tint }]}>
+                {t('systemIntelligence')}
+              </Text>
+              <View style={{ flex: 1 }} />
+              <Text style={[styles.verdictTitle, { color: theme.text }]}>
+                {t('monarchVerdict')}
+              </Text>
+            </View>
+
+            <View
+              style={[
+                styles.verdictBodyBox,
+                { backgroundColor: theme.backgroundSecondary, borderColor: theme.border },
+              ]}
+            >
+              <View style={[styles.verdictPurpleBar, { backgroundColor: theme.tint }]} />
+              <Text style={[styles.verdictMessage, { color: theme.textSecondary }]}>
+                {t('monarchVerdictDesc')}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* 5. PLAYER HIERARCHY CARD */}
+        <View
+          style={[
+            styles.hierarchyCard,
+            {
+              backgroundColor: theme.card,
+              borderColor: theme.borderRose,
+              shadowColor: theme.glow,
+            },
+          ]}
+        >
+          <View style={styles.hierarchyTopRow}>
+            <View style={styles.hierarchyTagRow}>
+              <Ionicons name="hourglass-outline" size={14} color={theme.tint} style={{ marginRight: 6 }} />
+              <Text style={[styles.hierarchyTagText, { color: theme.tint }]}>
+                {t('playerHierarchy')}
+              </Text>
+            </View>
+
+            <View style={styles.coinsDisplayRow}>
+              <Ionicons name="disc" size={16} color="#FBBF24" style={{ marginRight: 5 }} />
+              <Text style={styles.coinsDisplayText}>
+                {profile?.coins ?? 190} {t('coins')}
+              </Text>
+            </View>
+          </View>
+
+          <Text style={[styles.rankInitiateTitle, { color: theme.text }]}>
+            {userRank}-RANK INITIATE
+          </Text>
+
+          <View style={styles.xpRow}>
+            <Text style={[styles.xpCurrentText, { color: theme.text }]}>
+              {profile?.exp ?? 340} XP
+            </Text>
+            <Text style={[styles.xpTargetText, { color: theme.textSecondary }]}>
+              {profile?.max_exp ?? 1000} {t('xpToNextRank')}
+            </Text>
+          </View>
+
+          {/* XP Progress Track */}
+          <View style={[styles.xpTrack, { backgroundColor: theme.cardSecondary }]}>
+            <View
+              style={[
+                styles.xpFill,
+                {
+                  backgroundColor: theme.tint,
+                  width: `${Math.min(
+                    100,
+                    Math.max(
+                      8,
+                      Math.round(
+                        ((profile?.exp ?? 340) / (profile?.max_exp ?? 1000)) * 100
+                      )
+                    )
+                  )}%`,
+                },
+              ]}
+            />
+          </View>
+        </View>
+
+        {/* 6. EXCHANGE - MONARCH SHOP CARD */}
+        <View
+          style={[
+            styles.shopCard,
+            {
+              backgroundColor: theme.card,
+              borderColor: theme.borderRose,
+              shadowColor: theme.glow,
+            },
+          ]}
+        >
+          <View style={styles.shopTagRow}>
+            <Ionicons name="cart-outline" size={15} color={theme.tint} style={{ marginRight: 6 }} />
+            <Text style={[styles.shopTagText, { color: theme.tint }]}>{t('monarchShop')}</Text>
+          </View>
+
+          <Text style={[styles.shopMainTitle, { color: theme.text }]}>{t('monarchShop')}</Text>
+
+          <View style={styles.shopItemsList}>
+            {MONARCH_SHOP_ITEMS.map((item) => {
+              const isUnlocked = unlockedItems.includes(item.id);
+              return (
                 <View
-                  key={g.id}
-                  style={[styles.titleBadgeCard, { backgroundColor: theme.card, borderColor: theme.tint }]}
+                  key={item.id}
+                  style={[
+                    styles.shopItemRow,
+                    { backgroundColor: theme.cardSecondary, borderColor: theme.border },
+                  ]}
                 >
-                  <Ionicons name="ribbon-outline" size={22} color={theme.accentGold} />
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <Text style={[styles.titleName, { color: theme.text }]}>{g.reward_title}</Text>
-                    <Text style={{ color: theme.textSecondary, fontSize: 11 }}>
-                      Slayer of {g.boss_name} • {g.rank}
+                  {/* Item Icon */}
+                  <View style={[styles.shopItemIconWrap, { backgroundColor: item.iconBg }]}>
+                    <Ionicons
+                      name={item.icon}
+                      size={18}
+                      color="#FFFFFF"
+                    />
+                  </View>
+
+                  {/* Title & Subtitle */}
+                  <View style={styles.shopItemDetails}>
+                    <Text style={[styles.shopItemTitle, { color: theme.text }]}>{item.title}</Text>
+                    <Text style={[styles.shopItemSubtitle, { color: theme.textSecondary }]}>
+                      {item.subtitle}
                     </Text>
                   </View>
-                  <View style={[styles.equippedBadge, { backgroundColor: 'rgba(16,185,129,0.15)' }]}>
-                    <Text style={{ color: theme.success, fontSize: 10, fontWeight: '800' }}>ACQUIRED</Text>
-                  </View>
+
+                  {/* Buy/Active Button */}
+                  <SmoothPressable
+                    onPress={() => handlePurchase(item)}
+                    style={[
+                      styles.buyBtn,
+                      { backgroundColor: theme.card, borderColor: theme.border },
+                      isUnlocked && item.type === 'aura' && {
+                        backgroundColor: `${theme.tint}25`,
+                        borderColor: theme.tint,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name="disc"
+                      size={13}
+                      color="#FBBF24"
+                      style={{ marginRight: 4 }}
+                    />
+                    <Text
+                      style={[
+                        styles.buyBtnText,
+                        { color: theme.text },
+                        isUnlocked && item.type === 'aura' && { color: theme.tint },
+                      ]}
+                    >
+                      {isUnlocked && item.type === 'aura' ? 'Equipped' : item.cost}
+                    </Text>
+                  </SmoothPressable>
                 </View>
-              ))
-          )}
+              );
+            })}
+          </View>
         </View>
-      </View>
-    </ScrollView>
+      </ScrollView>
+
+      {/* Prime Awakening Profile Modal */}
+      <PrimeAwakeningModal
+        visible={awakeningOpen}
+        onClose={() => setAwakeningOpen(false)}
+        onSave={() => loadAllStats()}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  scrollContent: { padding: 16, gap: 16, paddingBottom: 100 },
-
-  header: {
+  root: {
+    flex: 1,
+  },
+  topHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginVertical: 4,
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
   },
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 6,
-    borderWidth: 1,
+  avatarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
   },
-  statusBadgeText: {
-    fontSize: 10,
+  topAvatarWrapper: {
+    marginRight: 10,
+    borderRadius: 28,
+    padding: 2,
+    borderWidth: 1.5,
+  },
+  avatarContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 2,
+    overflow: 'hidden',
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 10,
+    shadowOpacity: 0.85,
+    elevation: 5,
+  },
+  avatarImg: {
+    width: '100%',
+    height: '100%',
+  },
+  headerInfo: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  nameRankRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  hunterName: {
+    fontSize: 17.5,
     fontWeight: '800',
-    letterSpacing: 1.5,
+    maxWidth: 200,
   },
-  hunterTitle: {
-    fontSize: 26,
+  rankBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+  },
+  rankBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11.5,
     fontWeight: '900',
     letterSpacing: 0.5,
   },
-  classSubtitle: {
+  questSubtitle: {
     fontSize: 13,
-    fontWeight: '600',
-  },
-
-  levelCard: {
-    borderRadius: 20,
-    borderWidth: 1.5,
-    padding: 20,
-    gap: 16,
-    shadowColor: '#8B5CF6',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 16,
-    elevation: 4,
-  },
-  levelRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  levelNumber: {
-    fontSize: 28,
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
-  rankLabel: {
-    fontSize: 13,
-    fontWeight: '800',
     marginTop: 2,
   },
-  rankCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
+  scroll: {
+    flex: 1,
   },
-  expSection: {
-    gap: 8,
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 18,
+    paddingBottom: 36,
+    gap: 18,
   },
-  expLabelsRow: {
+  screenTitleSection: {
+    marginBottom: 4,
+  },
+  pageTitle: {
+    fontSize: 22.5,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+  },
+  pageSubtitle: {
+    fontSize: 14,
+    marginTop: 4,
+  },
+  tagsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 10,
+    marginTop: -4,
   },
-  expText: {
-    fontSize: 10,
+  systemReportTag: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    fontFamily: 'monospace',
+  },
+  activeCyclePill: {
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 14,
+  },
+  activeCycleText: {
+    fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0.8,
   },
-  expNumbers: {
-    fontSize: 12,
-    fontWeight: '800',
+  weeklyCard: {
+    borderRadius: 22,
+    borderWidth: 1.2,
+    padding: 18,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 6,
   },
-  expTrack: {
-    height: 8,
-    borderRadius: 4,
-    overflow: 'hidden',
-    width: '100%',
+  weeklyCardTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+    marginBottom: 16,
   },
-  expFill: {
-    height: '100%',
-    borderRadius: 4,
-  },
-
-  sectionHeaderRow: {
+  gaugeRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 4,
-  },
-  sectionTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-  },
-  sectionSub: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  attributesGrid: {
-    gap: 10,
-  },
-  attributeCard: {
-    borderRadius: 16,
-    borderWidth: 1.5,
-    padding: 14,
-    gap: 6,
-  },
-  attributeHeader: {
-    flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    marginBottom: 20,
+    paddingHorizontal: 4,
   },
-  attrIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    borderWidth: 1,
+  svgWrapper: {
+    width: 104,
+    height: 104,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  svgCenterText: {
+    position: 'absolute',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  statValue: {
+  gaugePercentText: {
+    fontSize: 20,
+    fontWeight: '900',
+  },
+  gaugeSubText: {
+    fontSize: 8.5,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    marginTop: 1,
+  },
+  gaugeInfoCol: {
+    flex: 1,
+    marginLeft: 24,
+    justifyContent: 'center',
+    gap: 12,
+  },
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  ratingLabel: {
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  ratingPill: {
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 14,
+  },
+  ratingPillText: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+  },
+  workoutDaysBox: {
+    gap: 3,
+  },
+  workoutDaysLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+  },
+  workoutDaysValue: {
     fontSize: 22,
     fontWeight: '900',
-  },
-  statName: {
-    fontSize: 12,
-    fontWeight: '800',
     letterSpacing: 0.5,
   },
-  statDesc: {
-    fontSize: 11,
-    lineHeight: 16,
-  },
-
-  achievementsSection: {
-    gap: 12,
-  },
-  milestonesGrid: {
+  metricsGrid: {
     flexDirection: 'row',
-    gap: 10,
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 20,
   },
-  milestoneItem: {
-    flex: 1,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    padding: 16,
+  metricCard: {
+    width: '48%',
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 6,
+  },
+  metricCardHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
-  milestoneValue: {
-    fontSize: 16,
-    fontWeight: '900',
-  },
-  milestoneLabel: {
-    fontSize: 9,
+  metricCardLabel: {
+    fontSize: 11.5,
     fontWeight: '800',
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
   },
-
-  // Titles Section
-  titlesSection: {
-    gap: 12,
+  metricCardValue: {
+    fontSize: 20,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
   },
-  titlesList: {
+  verdictSection: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 14,
     gap: 10,
   },
-  emptyTitlesCard: {
-    padding: 20,
-    borderRadius: 16,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  titleBadgeCard: {
+  verdictHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    gap: 12,
+    gap: 6,
   },
-  titleName: {
+  verdictDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  verdictSystemTag: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    fontFamily: 'monospace',
+  },
+  verdictTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  verdictBodyBox: {
+    flexDirection: 'row',
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 12,
+    overflow: 'hidden',
+  },
+  verdictPurpleBar: {
+    width: 3.5,
+    borderRadius: 2,
+    marginRight: 10,
+  },
+  verdictMessage: {
+    fontSize: 13.5,
+    lineHeight: 20,
+    flex: 1,
+    fontWeight: '500',
+  },
+  hierarchyCard: {
+    borderRadius: 22,
+    borderWidth: 1.2,
+    padding: 18,
+    gap: 12,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 14,
+    elevation: 6,
+  },
+  hierarchyTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  hierarchyTagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  hierarchyTagText: {
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+  },
+  coinsDisplayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  coinsDisplayText: {
+    color: '#FBBF24',
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  rankInitiateTitle: {
+    fontSize: 19,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+    marginTop: -2,
+  },
+  xpRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  xpCurrentText: {
     fontSize: 14,
     fontWeight: '800',
   },
-  equippedBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+  xpTargetText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  xpTrack: {
+    height: 9,
     borderRadius: 6,
+    overflow: 'hidden',
+  },
+  xpFill: {
+    height: '100%',
+    borderRadius: 6,
+  },
+  shopCard: {
+    borderRadius: 22,
+    borderWidth: 1.2,
+    padding: 18,
+    gap: 14,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 14,
+    elevation: 6,
+  },
+  shopTagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  shopTagText: {
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+  },
+  shopMainTitle: {
+    fontSize: 19,
+    fontWeight: '900',
+    marginTop: -4,
+  },
+  shopItemsList: {
+    gap: 10,
+  },
+  shopItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  shopItemIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shopItemDetails: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  shopItemTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  shopItemSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  buyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 18,
+  },
+  buyBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
   },
 });

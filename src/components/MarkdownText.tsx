@@ -25,7 +25,7 @@ function renderInline(line: string, key: string, color: string, theme: Theme) {
     const k = `${key}-${i++}`;
     if (token.startsWith('`')) {
       runs.push(
-        <Text key={k} style={{ fontFamily: MONO, backgroundColor: theme.card }}>
+        <Text key={k} style={{ fontFamily: MONO, backgroundColor: theme.cardSecondary, color: theme.accentHighlight, paddingHorizontal: 4, borderRadius: 4 }}>
           {token.slice(1, -1)}
         </Text>
       );
@@ -117,7 +117,7 @@ export const MarkdownText = React.memo(function MarkdownText({ text, color, them
       nodes.push(
         <View
           key={`c${i}`}
-          style={[styles.code, { backgroundColor: theme.card }]}
+          style={[styles.code, { backgroundColor: theme.cardSecondary, borderColor: theme.border, borderWidth: 1 }]}
         >
           <Text style={[styles.codeText, { color }]}>{body}</Text>
         </View>

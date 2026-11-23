@@ -83,7 +83,7 @@ export function ChatInput({
         <View
           style={[
             styles.tray,
-            { backgroundColor: theme.card, borderColor: theme.border },
+            { backgroundColor: theme.card, borderColor: theme.borderRose },
           ]}
         >
           <View style={styles.trayHeader}>
@@ -139,7 +139,7 @@ export function ChatInput({
             styles.pill,
             {
               backgroundColor: theme.inputBackground,
-              borderColor: theme.border,
+              borderColor: theme.borderRose,
             },
           ]}
         >
@@ -210,7 +210,7 @@ export function ChatInput({
             accessibilityLabel="Use recording"
             style={[styles.action, { backgroundColor: theme.buttonPrimary }]}
           >
-            <Ionicons name="checkmark" size={22} color="#FFF" />
+            <Ionicons name="checkmark" size={22} color={theme.buttonPrimaryText} />
           </SmoothPressable>
         ) : generating ? (
           <SmoothPressable
@@ -227,10 +227,19 @@ export function ChatInput({
             accessibilityLabel="Send message"
             style={[
               styles.action,
-              { backgroundColor: canSend ? theme.buttonPrimary : theme.buttonSecondary },
+              {
+                backgroundColor: canSend ? theme.buttonPrimary : theme.buttonSecondary,
+                borderColor: canSend ? theme.borderRose : 'transparent',
+                borderWidth: canSend ? 1 : 0,
+                shadowColor: canSend ? theme.glow : undefined,
+                shadowOffset: canSend ? { width: 0, height: 2 } : undefined,
+                shadowRadius: canSend ? 6 : 0,
+                shadowOpacity: canSend ? 0.35 : 0,
+                elevation: canSend ? 3 : 0,
+              },
             ]}
           >
-            <Ionicons name="arrow-up" size={22} color={canSend ? '#FFFFFF' : theme.textSecondary} />
+            <Ionicons name="arrow-up" size={22} color={canSend ? theme.buttonPrimaryText : theme.textSecondary} />
           </SmoothPressable>
         )}
       </View>
@@ -282,7 +291,7 @@ function AudioPreview({
         <Ionicons
           name={status.playing ? 'pause' : 'play'}
           size={20}
-          color="#FFF"
+          color={theme.buttonPrimaryText}
         />
       </SmoothPressable>
       <View style={styles.flex}>
@@ -312,11 +321,16 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   tray: {
-    borderWidth: 1,
+    borderWidth: 1.2,
     borderRadius: 16,
     padding: 10,
     marginBottom: 8,
     gap: 8,
+    shadowColor: '#D982A5',
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 8,
+    shadowOpacity: 0.45,
+    elevation: 3,
   },
   trayHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   trayItem: { flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -342,10 +356,14 @@ const styles = StyleSheet.create({
     minHeight: ROW_H + 2,
     minWidth: 0,
     borderRadius: (ROW_H + 2) / 2,
-    borderWidth: 1,
+    borderWidth: 1.2,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
+    shadowColor: '#D982A5',
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 8,
+    shadowOpacity: 0.45,
   },
   iconBtn: {
     width: 40,

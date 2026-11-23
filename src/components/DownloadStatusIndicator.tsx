@@ -145,17 +145,26 @@ export function DownloadStatusIndicator() {
             accessibilityLabel={`Expand ${isDownloading ? 'model download' : 'paused download'}, ${percent}% complete`}
             accessibilityHint="Drag to move this indicator, or tap to expand it"
             onPress={() => setMinimized(false)}
-            style={[styles.miniPill, { backgroundColor: theme.buttonPrimary, borderColor: theme.buttonPrimary }]}
+            style={[
+              styles.miniPill,
+              {
+                backgroundColor: theme.buttonPrimary,
+                borderColor: theme.borderRose,
+                shadowColor: theme.glow,
+                shadowOpacity: 0.35,
+                shadowRadius: 8,
+              },
+            ]}
           >
             <Ionicons
               name={isDownloading ? 'cloud-download-outline' : 'pause-circle-outline'}
               size={18}
-              color="#FFFFFF"
+              color={theme.buttonPrimaryText}
             />
-            <Text style={[styles.miniLabel, { color: '#FFFFFF' }]}>
+            <Text style={[styles.miniLabel, { color: theme.buttonPrimaryText }]}>
               {isDownloading ? 'Downloading' : 'Paused'} {percent}%
             </Text>
-            <Ionicons name="chevron-up" size={16} color="#FFFFFF" />
+            <Ionicons name="chevron-up" size={16} color={theme.buttonPrimaryText} />
           </SmoothPressable>
         </Animated.View>
       </Animated.View>
@@ -168,7 +177,7 @@ export function DownloadStatusIndicator() {
       style={[styles.position, { bottom }]}
       accessibilityLiveRegion="polite"
     >
-      <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+      <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.borderRose, shadowColor: theme.glow, shadowOpacity: 0.2 }]}>
         <View style={styles.heading}>
           <Text style={{ color: theme.text, fontWeight: '700', flex: 1 }}>
             {isDownloading ? 'Model download' : 'Download paused'}

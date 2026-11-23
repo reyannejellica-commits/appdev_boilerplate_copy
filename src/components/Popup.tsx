@@ -36,7 +36,7 @@ export function Popup({ visible, onClose, children, style, label }: {
       <View style={styles.overlay}>
         <BlurView pointerEvents="none" accessible={false} importantForAccessibility="no-hide-descendants" blurTarget={target} blurMethod="dimezisBlurView" intensity={65} tint={settings.theme === 'dark' ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
         <Pressable accessibilityRole="button" accessibilityLabel={`Dismiss ${label}`} onPress={onClose} style={[StyleSheet.absoluteFill, styles.scrim]} />
-        <View accessibilityViewIsModal accessibilityLabel={label} style={[styles.sheet, { backgroundColor: theme.card }, style]}>{children}</View>
+        <View accessibilityViewIsModal accessibilityLabel={label} style={[styles.sheet, { backgroundColor: theme.card, borderColor: theme.borderRose, borderWidth: 1.2 }, style]}>{children}</View>
       </View>
     </Modal>
   );
@@ -67,7 +67,17 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   overlay: { flex: 1, justifyContent: 'center', padding: 24 },
   scrim: { backgroundColor: 'rgba(0,0,0,0.14)' },
-  sheet: { width: '100%', maxHeight: '80%', borderRadius: 18, padding: 18 },
+  sheet: {
+    width: '100%',
+    maxHeight: '80%',
+    borderRadius: 18,
+    padding: 18,
+    shadowColor: '#D982A5',
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 20,
+    shadowOpacity: 0.75,
+    elevation: 10,
+  },
   title: { fontSize: 20, fontWeight: '600', marginBottom: 10 },
   message: { fontSize: 15, lineHeight: 22 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 20 },

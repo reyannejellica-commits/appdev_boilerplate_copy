@@ -82,7 +82,7 @@ const MIGRATIONS: string[] = [
     date TEXT NOT NULL
   );
   `,
-  // Migration 3: Boss Gates & Dungeons
+  // Migration 4: Boss Gates & Dungeons
   `
   CREATE TABLE IF NOT EXISTS dungeon_gates (
     id TEXT PRIMARY KEY,
@@ -95,6 +95,15 @@ const MIGRATIONS: string[] = [
     defeated INTEGER NOT NULL DEFAULT 0,
     reward_exp INTEGER NOT NULL DEFAULT 200,
     reward_title TEXT NOT NULL
+  );
+  `,
+  // Migration 5: Hunter Coins and Unlocked Shop Items
+  `
+  ALTER TABLE hunter_profile ADD COLUMN coins INTEGER NOT NULL DEFAULT 190;
+  CREATE TABLE IF NOT EXISTS unlocked_shop_items (
+    id TEXT PRIMARY KEY,
+    item_id TEXT NOT NULL,
+    unlocked_at INTEGER NOT NULL
   );
   `,
 ];

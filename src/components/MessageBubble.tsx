@@ -50,7 +50,7 @@ export function MessageBubble({ message, pendingLabel, onRetry }: Props) {
     >
       {!isUser && (
         <View style={[styles.avatar, { backgroundColor: theme.buttonPrimary }]}>
-          <Ionicons name="sparkles" size={14} color="#FFF" />
+          <Ionicons name="sparkles" size={14} color={theme.buttonPrimaryText} />
         </View>
       )}
       <View style={[styles.bubbleCol, isUser && styles.colUser]}>
@@ -67,8 +67,8 @@ export function MessageBubble({ message, pendingLabel, onRetry }: Props) {
               backgroundColor: isUser
                 ? theme.userBubble
                 : theme.assistantBubble,
-              borderColor: theme.danger,
-              borderWidth: message.status === 'error' ? 1 : 0,
+              borderColor: message.status === 'error' ? theme.danger : !isUser ? theme.borderRose : 'transparent',
+              borderWidth: message.status === 'error' || !isUser ? 1.2 : 0,
             },
           ]}
         >
@@ -130,8 +130,8 @@ export function MessageBubble({ message, pendingLabel, onRetry }: Props) {
               </View>
               {retryable && (
                 <View style={[styles.retry, { backgroundColor: theme.buttonPrimary }]}>
-                  <Ionicons name="refresh" size={14} color="#FFFFFF" />
-                  <Text style={[styles.errorText, { color: '#FFFFFF', fontWeight: '600' }]}>Retry</Text>
+                  <Ionicons name="refresh" size={14} color={theme.buttonPrimaryText} />
+                  <Text style={[styles.errorText, { color: theme.buttonPrimaryText, fontWeight: '600' }]}>Retry</Text>
                 </View>
               )}
             </View>
@@ -161,6 +161,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#F0BCD2',
+    shadowColor: '#D982A5',
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 6,
+    shadowOpacity: 0.5,
   },
   bubbleCol: { maxWidth: '82%' },
   colUser: { alignItems: 'flex-end' },
@@ -170,7 +176,13 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   bubbleUser: { borderBottomRightRadius: 4 },
-  bubbleAssistant: { borderTopLeftRadius: 4 },
+  bubbleAssistant: {
+    borderTopLeftRadius: 4,
+    shadowColor: '#D982A5',
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 8,
+    shadowOpacity: 0.35,
+  },
   image: { width: 200, height: 200, borderRadius: 12 },
   pendingRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   errorBlock: { marginTop: 6, gap: 4 },

@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getProvider } from '@/ai';
+import { createBuiltinCoachProvider } from '@/ai/builtinCoach';
 import {
   LOCAL_CONTEXT_TOKENS,
   releaseLocalConversation,
@@ -171,18 +172,33 @@ export default function ChatScreen() {
             if (!streamTimer) streamTimer = setTimeout(flushStream, 50);
           },
         });
-      } catch (e) {
-        if (streamTimer) clearTimeout(streamTimer);
+      } catch {
         if (!controller.signal.aborted) {
-          const errText =
-            e instanceof Error ? e.message : 'Generation failed.';
-          await setMessageStatus(assistantRow.id, 'error', errText);
-          updateRow({ ...assistantRow, content, status: 'error', error: errText });
-          setGenerating(false);
-          abortRef.current = null;
-          return;
+          // Seamless offline fallback to Built-in PeakFit Sports AI Coach
+          try {
+            const fallbackProvider = createBuiltinCoachProvider();
+            await fallbackProvider.generate(history, {
+              systemPrompt: buildSystemPrompt(settings),
+              signal: controller.signal,
+              conversationId: id,
+              onContext: (usage) => setReported({ provider: 'builtin', usage }),
+              onModel: () => setLastModel('PeakFit Coach · Built-in'),
+              onToken: (t) => {
+                content += t;
+                if (!streamTimer) streamTimer = setTimeout(flushStream, 50);
+              },
+            });
+          } catch (fallbackError) {
+            if (streamTimer) clearTimeout(streamTimer);
+            const errText =
+              fallbackError instanceof Error ? fallbackError.message : 'Generation failed.';
+            await setMessageStatus(assistantRow.id, 'error', errText);
+            updateRow({ ...assistantRow, content, status: 'error', error: errText });
+            setGenerating(false);
+            abortRef.current = null;
+            return;
+          }
         }
-        // Aborted mid-flight: fall through and keep the partial content.
       }
 
       if (streamTimer) clearTimeout(streamTimer);
@@ -375,9 +391,13 @@ export default function ChatScreen() {
   // local model is loading/downloading, red otherwise.
   const providerLabel =
     settings.provider === 'cloud'
-      ? lastModel
-        ? `Gemini · ${lastModel}`
-        : 'Gemini · Cloud'
+      ? settings.geminiApiKey
+        ? lastModel
+          ? `Gemini · ${lastModel}`
+          : 'Gemini · Cloud'
+        : 'PeakFit Coach · Ready'
+      : settings.provider === 'builtin'
+      ? 'PeakFit Coach · Built-in'
       : 'Local AI · Gemma';
   const modelLoading =
     problem === 'Loading the local model...' || modelStatus.state === 'loading';
@@ -393,13 +413,24 @@ export default function ChatScreen() {
 
   return (
     <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={insets.top} style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* Top bar — no back button since this is a tab */}
+      {/* Top bar with back button to return to workouts */}
       <View style={[styles.topBar, { borderBottomColor: theme.border }]}>
-        <View style={[styles.systemBadge, { backgroundColor: theme.card }]}>
-          <Ionicons name="hardware-chip" size={16} color={theme.tint} />
+        <IconButton
+          icon="chevron-back"
+          label="Back"
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/(tabs)');
+            }
+          }}
+        />
+        <View style={[styles.systemBadge, { backgroundColor: theme.cardSecondary }]}>
+          <Ionicons name="chatbubble-ellipses" size={16} color={theme.accentAmber} />
         </View>
         <View style={styles.flex}>
-          <Text style={[styles.title, { color: theme.text }]}>System Window</Text>
+          <Text style={[styles.title, { color: theme.text }]}>PeakFit Coach</Text>
           <View style={styles.statusRow}>
             <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
             <Text numberOfLines={1} style={{ color: theme.textSecondary, fontSize: 12 }}>
@@ -414,14 +445,14 @@ export default function ChatScreen() {
       {banner}
       {messages.length === 0 ? (
         <View style={styles.empty}>
-          <View style={[styles.emptyAvatar, { backgroundColor: theme.tint }]}>
-            <Ionicons name="hardware-chip" size={30} color="#FFF" />
+          <View style={[styles.emptyAvatar, { backgroundColor: theme.accentAmber }]}>
+            <Ionicons name="fitness" size={30} color={theme.buttonPrimaryText} />
           </View>
           <Text style={[styles.emptyTitle, { color: theme.text }]}>
-            Hunter {settings.nickname || ''}, what do you seek?
+            Hey {settings.nickname || 'Athlete'}, let{"'"}s train smart
           </Text>
           <Text style={[styles.emptySub, { color: theme.textSecondary }]}>
-            Your AI System is ready. All queries are processed on-device.
+            Ask anything about progressive overload, routines, recovery, or macros.
           </Text>
           <View style={styles.chips}>
             {SUGGESTIONS.map((s) => (
@@ -431,7 +462,7 @@ export default function ChatScreen() {
                 onPress={() => setInput(s.prompt)}
                 style={[
                   styles.chip,
-                  { backgroundColor: theme.card, borderColor: theme.border },
+                  { backgroundColor: theme.card, borderColor: theme.borderRose },
                   problem !== null && styles.chipDisabled,
                 ]}
               >
@@ -497,6 +528,12 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 10,
+    borderWidth: 1.2,
+    borderColor: '#F0BCD2',
+    shadowColor: '#D982A5',
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 8,
+    shadowOpacity: 0.5,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -513,6 +550,13 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
+    borderWidth: 1.5,
+    borderColor: '#F0BCD2',
+    shadowColor: '#D982A5',
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 20,
+    shadowOpacity: 0.8,
+    elevation: 8,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
@@ -531,10 +575,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    borderWidth: 1,
+    borderWidth: 1.2,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 8,
+    shadowColor: '#D982A5',
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 8,
+    shadowOpacity: 0.45,
   },
   chipDisabled: { opacity: 0.5 },
   list: { paddingVertical: 12 },

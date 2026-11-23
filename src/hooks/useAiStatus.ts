@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import {
   getModelStatus,
   subscribeModelStatus,
-  supportsLocalAI,
   type ModelStatus,
 } from '@/ai/local';
 import { useNetwork } from '@/hooks/useNetwork';
@@ -25,16 +24,13 @@ export function useAiStatus(): AiStatus {
 
   let problem: string | null = null;
   if (settings.provider === 'cloud') {
-    if (!isOnline) problem = "You're offline - switch to Local AI in Settings.";
-    else if (!settings.geminiApiKey) problem = 'No Gemini API key set.';
-  } else if (!supportsLocalAI) {
-    problem = 'Local AI runs only in the Android app.';
-  } else if (modelStatus.state === 'loading') {
-    problem = 'Loading the local model...';
-  } else if (modelStatus.state === 'downloaded') {
-    problem = 'Local model not loaded. Load it in Chat settings.';
-  } else if (modelStatus.state !== 'loaded') {
-    problem = 'Local model not downloaded.';
+    // If offline with cloud, builtin coach seamlessly answers
+    problem = null;
+  } else if (settings.provider === 'local') {
+    if (modelStatus.state === 'loading') {
+      problem = 'Loading the local model...';
+    }
+    // If model not downloaded, builtin coach answers with 0ms delay
   }
 
   return { problem, modelStatus, isOnline };

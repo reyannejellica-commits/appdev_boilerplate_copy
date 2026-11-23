@@ -7,6 +7,7 @@ export interface HunterProfile {
   level: number;
   exp: number;
   max_exp: number;
+  coins: number;
   streak_days: number;
   last_active_date: string;
   str: number;
@@ -60,6 +61,7 @@ export async function getHunterProfile(defaultName = 'Hunter'): Promise<HunterPr
     return {
       ...row,
       rank: calculateRank(row.level),
+      coins: row.coins !== undefined && row.coins !== null ? row.coins : 190,
     };
   }
 
@@ -67,34 +69,56 @@ export async function getHunterProfile(defaultName = 'Hunter'): Promise<HunterPr
   const profile: HunterProfile = {
     id: newId(),
     hunter_name: defaultName,
-    rank: 'E-Rank',
-    level: 1,
-    exp: 0,
-    max_exp: 100,
-    streak_days: 1,
+    rank: 'B-Rank',
+    level: 20,
+    exp: 340,
+    max_exp: 1000,
+    coins: 190,
+    streak_days: 4,
     last_active_date: today,
-    str: 12,
-    agi: 10,
-    sta: 14,
-    int_stat: 10,
+    str: 18,
+    agi: 16,
+    sta: 20,
+    int_stat: 14,
   };
 
-  await db.runAsync(
-    `INSERT INTO hunter_profile (id, hunter_name, rank, level, exp, max_exp, streak_days, last_active_date, str, agi, sta, int_stat)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    profile.id,
-    profile.hunter_name,
-    profile.rank,
-    profile.level,
-    profile.exp,
-    profile.max_exp,
-    profile.streak_days,
-    profile.last_active_date,
-    profile.str,
-    profile.agi,
-    profile.sta,
-    profile.int_stat
-  );
+  try {
+    await db.runAsync(
+      `INSERT INTO hunter_profile (id, hunter_name, rank, level, exp, max_exp, coins, streak_days, last_active_date, str, agi, sta, int_stat)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      profile.id,
+      profile.hunter_name,
+      profile.rank,
+      profile.level,
+      profile.exp,
+      profile.max_exp,
+      profile.coins,
+      profile.streak_days,
+      profile.last_active_date,
+      profile.str,
+      profile.agi,
+      profile.sta,
+      profile.int_stat
+    );
+  } catch {
+    // Fallback if coins column is not yet migrated in old session
+    await db.runAsync(
+      `INSERT INTO hunter_profile (id, hunter_name, rank, level, exp, max_exp, streak_days, last_active_date, str, agi, sta, int_stat)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      profile.id,
+      profile.hunter_name,
+      profile.rank,
+      profile.level,
+      profile.exp,
+      profile.max_exp,
+      profile.streak_days,
+      profile.last_active_date,
+      profile.str,
+      profile.agi,
+      profile.sta,
+      profile.int_stat
+    );
+  }
 
   return profile;
 }
@@ -278,6 +302,16 @@ export async function getCardioHistory(limit = 10): Promise<CardioLog[]> {
   );
 }
 
+export async function deleteCardioLog(id: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('DELETE FROM cardio_logs WHERE id = ?', id);
+}
+
+export async function clearCardioHistory(): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('DELETE FROM cardio_logs');
+}
+
 export interface DungeonGate {
   id: string;
   title: string;
@@ -411,4 +445,75 @@ export async function attackDungeonBoss(
   }
 
   return { bossDefeated, expAwarded, newHp };
+}
+
+/** Add coins to hunter */
+export async function addHunterCoins(amount: number): Promise<number> {
+  const db = await getDb();
+  const profile = await getHunterProfile();
+  const current = profile.coins !== undefined && profile.coins !== null ? profile.coins : 190;
+  const newCoins = Math.max(0, current + amount);
+  try {
+    await db.runAsync('UPDATE hunter_profile SET coins = ?', newCoins);
+  } catch {
+    // safe fallback
+  }
+  return newCoins;
+}
+
+/** Spend coins if sufficient balance */
+export async function spendHunterCoins(amount: number): Promise<boolean> {
+  const db = await getDb();
+  const profile = await getHunterProfile();
+  const current = profile.coins !== undefined && profile.coins !== null ? profile.coins : 190;
+  if (current < amount) return false;
+  const newCoins = current - amount;
+  try {
+    await db.runAsync('UPDATE hunter_profile SET coins = ?', newCoins);
+  } catch {
+    // safe fallback
+  }
+  return true;
+}
+
+/** Get list of unlocked shop item IDs */
+export async function getUnlockedShopItems(): Promise<string[]> {
+  const db = await getDb();
+  try {
+    const rows = await db.getAllAsync<{ item_id: string }>(
+      'SELECT item_id FROM unlocked_shop_items'
+    );
+    return rows.map((r) => r.item_id);
+  } catch {
+    return [];
+  }
+}
+
+/** Unlock a shop item */
+export async function unlockShopItem(itemId: string): Promise<void> {
+  const db = await getDb();
+  const id = newId();
+  try {
+    await db.runAsync(
+      'INSERT INTO unlocked_shop_items (id, item_id, unlocked_at) VALUES (?, ?, ?)',
+      id,
+      itemId,
+      Date.now()
+    );
+  } catch {
+    // safe fallback
+  }
+}
+
+/** Get total cardio distance logged */
+export async function getTotalCardioDistanceKm(): Promise<number> {
+  const db = await getDb();
+  try {
+    const row = await db.getFirstAsync<{ total_dist: number }>(
+      'SELECT SUM(distance_km) as total_dist FROM cardio_logs'
+    );
+    return row?.total_dist ? Math.round(row.total_dist * 10) / 10 : 0.0;
+  } catch {
+    return 0.0;
+  }
 }

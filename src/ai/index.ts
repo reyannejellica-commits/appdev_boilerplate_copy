@@ -1,4 +1,5 @@
 import type { Settings } from '../settings/storage';
+import { createBuiltinCoachProvider } from './builtinCoach';
 import { createGeminiProvider } from './gemini';
 import { createLocalProvider, getModelStatus } from './local';
 import type { ChatProvider } from './types';
@@ -9,18 +10,24 @@ import type { ChatProvider } from './types';
  */
 export function getProvider(settings: Settings): ChatProvider {
   if (settings.provider === 'local') {
-    return createLocalProvider({
-      backend: settings.localBackend,
-      isModelDownloaded: () => {
-        const s = getModelStatus();
-        return s.state === 'downloaded' || s.state === 'loading' || s.state === 'loaded';
-      },
+    const s = getModelStatus();
+    const isModelReady = s.state === 'downloaded' || s.state === 'loading' || s.state === 'loaded';
+    if (isModelReady) {
+      return createLocalProvider({
+        backend: settings.localBackend,
+        isModelDownloaded: () => true,
+      });
+    }
+    // Offline resilient: fallback to built-in sports science AI coach if local model is not downloaded
+    return createBuiltinCoachProvider();
+  }
+  if (settings.provider === 'cloud' && settings.geminiApiKey) {
+    return createGeminiProvider({
+      apiKey: settings.geminiApiKey,
+      model: settings.geminiModel,
     });
   }
-  return createGeminiProvider({
-    apiKey: settings.geminiApiKey,
-    model: settings.geminiModel,
-  });
+  return createBuiltinCoachProvider();
 }
 
 export type { ChatMessage, ChatProvider, ContextUsage } from './types';

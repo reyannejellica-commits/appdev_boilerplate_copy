@@ -24,8 +24,9 @@ export function Button({
 }) {
   const theme = useTheme();
   const secondary = variant === 'secondary' || variant === 'destructiveSecondary';
-  const foreground = variant === 'destructiveSecondary' ? theme.danger : secondary ? theme.text : '#FFFFFF';
+  const foreground = variant === 'destructiveSecondary' ? theme.danger : secondary ? theme.text : theme.buttonPrimaryText;
   const background = secondary ? theme.buttonSecondary : variant === 'destructive' ? theme.buttonDanger : theme.buttonPrimary;
+  const isPrimary = variant === 'primary';
   return (
     <SmoothPressable
       {...props}
@@ -34,7 +35,17 @@ export function Button({
       accessibilityState={{ ...props.accessibilityState, busy: loading }}
       style={(state) => [
         styles.button,
-        { backgroundColor: background, opacity: disabled ? 0.5 : state.pressed ? 0.88 : 1 },
+        {
+          backgroundColor: background,
+          borderColor: isPrimary ? theme.borderRose : secondary ? theme.borderRose : 'transparent',
+          borderWidth: isPrimary || secondary ? 1.2 : 0,
+          shadowColor: isPrimary || secondary ? theme.glow : undefined,
+          shadowOffset: { width: 0, height: 0 },
+          shadowOpacity: isPrimary ? 0.75 : secondary ? 0.35 : 0,
+          shadowRadius: isPrimary ? 14 : secondary ? 6 : 0,
+          elevation: isPrimary ? 8 : secondary ? 3 : 0,
+          opacity: disabled ? 0.5 : state.pressed ? 0.88 : 1,
+        },
         typeof style === 'function' ? style(state) : style,
       ]}
     >

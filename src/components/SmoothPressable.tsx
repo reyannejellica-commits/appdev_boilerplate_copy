@@ -5,6 +5,8 @@ import {
   type PressableProps,
 } from 'react-native';
 import { useReduceMotion } from './AccessibilityPreferences';
+import { useSettings } from '@/settings/SettingsContext';
+import { playClickSound } from '@/utils/alertSounds';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -13,6 +15,7 @@ export function SmoothPressable({
   children,
   onPressIn,
   onPressOut,
+  onPress,
   style,
   accessibilityRole = 'button',
   accessibilityState,
@@ -21,6 +24,7 @@ export function SmoothPressable({
   ...props
 }: PressableProps) {
   const reduceMotion = useReduceMotion();
+  const { settings } = useSettings();
   const [scale] = useState(() => new Animated.Value(1));
   const [pressed, setPressed] = useState(false);
   const resolvedStyle = typeof style === 'function' ? style({ pressed }) : style;
@@ -42,6 +46,12 @@ export function SmoothPressable({
       hitSlop={hitSlop}
       accessibilityRole={accessibilityRole}
       accessibilityState={{ ...accessibilityState, disabled: !!disabled }}
+      onPress={(event) => {
+        if (settings?.timerSoundEnabled !== false) {
+          playClickSound();
+        }
+        onPress?.(event);
+      }}
       onPressIn={(event) => {
         setPressed(true);
         animate(0.985);

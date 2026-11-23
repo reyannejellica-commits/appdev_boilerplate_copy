@@ -35,8 +35,9 @@ import { useTheme, type Theme } from '@/theme';
 import { confirmAction, showMessage } from '@/utils/confirm';
 
 const PROVIDERS: DropdownOption<ProviderId>[] = [
-  { value: 'cloud', label: 'Cloud AI (Gemini)', description: 'Needs internet and a free API key' },
-  { value: 'local', label: 'Local AI', description: 'Runs on the phone, works offline' },
+  { value: 'builtin', label: 'Built-in Coach AI', description: 'Zero-config sports scientist, works offline & free' },
+  { value: 'cloud', label: 'Cloud AI (Gemini)', description: 'Needs internet and a Gemini API key' },
+  { value: 'local', label: 'Local AI (Gemma)', description: 'Runs on the phone, works offline' },
 ];
 
 const BACKENDS: DropdownOption<LocalBackend>[] = [
@@ -117,7 +118,13 @@ export default function ChatSettingsScreen() {
         />
       </Section>
 
-      {settings.provider === 'cloud' ? <CloudSection theme={theme} /> : <LocalSection theme={theme} />}
+      {settings.provider === 'cloud' ? (
+        <CloudSection theme={theme} />
+      ) : settings.provider === 'local' ? (
+        <LocalSection theme={theme} />
+      ) : (
+        <BuiltinSection theme={theme} />
+      )}
 
       <Section title="System prompt" theme={theme}>
         <TextInput
@@ -220,9 +227,20 @@ function CloudSection({ theme }: { theme: Theme }) {
       {current?.error && <Text style={{ color: theme.danger }}>{current.error}</Text>}
       {!settings.geminiApiKey && (
         <Text style={[styles.hint, { color: theme.textSecondary }]}>
-          Add an API key to see the models available to you.
+          No key entered. PeakFit Coach will use the built-in sports science AI engine until a Gemini API key is provided.
         </Text>
       )}
+    </Section>
+  );
+}
+
+/** Built-in zero-config sports science engine info. */
+function BuiltinSection({ theme }: { theme: Theme }) {
+  return (
+    <Section title="Built-in Coach AI" theme={theme}>
+      <Text style={{ color: theme.textSecondary, fontSize: 13, lineHeight: 20 }}>
+        PeakFit Coach operates with a built-in sports science knowledge engine. You can ask anything about progressive overload, routines, recovery, macros, or injury prevention with zero setup and offline availability.
+      </Text>
     </Section>
   );
 }
