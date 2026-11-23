@@ -1,6 +1,6 @@
 import { Platform, Vibration } from 'react-native';
 import { type TimerSoundType } from '@/settings/storage';
-import { SOUND_CLICK_URI, SOUND_DATA_URIS } from './soundDataUris';
+import { SOUND_DATA_URIS } from './soundDataUris';
 
 export interface SoundOption {
   id: TimerSoundType;
@@ -19,7 +19,6 @@ export const SOUND_OPTIONS: SoundOption[] = [
 ];
 
 let audioCtx: any = null;
-let cachedClickAudio: any = null;
 
 function getAudioContext(): any {
   if (typeof window === 'undefined') return null;
@@ -35,52 +34,9 @@ function getAudioContext(): any {
   return audioCtx;
 }
 
-/** Subtle, crisp UI tap audio feedback (instant playback via cached HTML5 Audio and haptic fallback) */
+/** UI tap audio is disabled as per user specification */
 export function playClickSound(): void {
-  try {
-    if (typeof window !== 'undefined' && typeof window.Audio !== 'undefined') {
-      if (!cachedClickAudio) {
-        cachedClickAudio = new window.Audio(SOUND_CLICK_URI);
-        cachedClickAudio.volume = 0.85;
-      } else {
-        cachedClickAudio.currentTime = 0;
-      }
-      void cachedClickAudio.play().catch(() => {
-        // Fallback to Web Audio oscillator if Audio element is blocked
-        playWebAudioClick();
-      });
-      return;
-    }
-  } catch {
-    playWebAudioClick();
-  }
-
-  try {
-    Vibration.vibrate(18);
-  } catch {}
-}
-
-function playWebAudioClick(): void {
-  try {
-    const ctx = getAudioContext();
-    if (!ctx) return;
-    const now = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(1200, now);
-    osc.frequency.exponentialRampToValueAtTime(300, now + 0.05);
-
-    gain.gain.setValueAtTime(0.5, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-
-    osc.start(now);
-    osc.stop(now + 0.055);
-  } catch {}
+  // Silent - click sounds disabled across all UI elements
 }
 
 /** Synthesize high-quality offline alerts using instant Audio playback */

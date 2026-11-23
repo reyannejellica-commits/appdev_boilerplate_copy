@@ -21,7 +21,7 @@ import { useTranslation } from '@/i18n';
 import { useSettings } from '@/settings/SettingsContext';
 import { type LanguageCode, type ThemeColorKey, type TimerSoundType } from '@/settings/storage';
 import { useTheme } from '@/theme';
-import { SOUND_OPTIONS, playAlertSound, playClickSound } from '@/utils/alertSounds';
+import { SOUND_OPTIONS, playAlertSound } from '@/utils/alertSounds';
 import { confirmAction, showMessage } from '@/utils/confirm';
 import {
   AVATAR_OPTIONS,
@@ -59,9 +59,6 @@ export default function SettingsScreen() {
   const [aboutSubView, setAboutSubView] = useState<'main' | 'privacy' | 'terms'>('main');
 
   const handleBack = useCallback(() => {
-    if (settings.timerSoundEnabled) {
-      playClickSound();
-    }
     try {
       if (router.canGoBack()) {
         router.back();
@@ -71,7 +68,7 @@ export default function SettingsScreen() {
     } catch {
       router.replace('/(tabs)');
     }
-  }, [router, settings.timerSoundEnabled]);
+  }, [router]);
 
   useEffect(() => {
     const onBackPress = () => {
@@ -129,7 +126,6 @@ export default function SettingsScreen() {
   const handleConfirmAvatar = async () => {
     try {
       await update('avatarId', stagedAvatarId);
-      if (settings.timerSoundEnabled) playClickSound();
     } catch (e) {
       console.warn('Failed to save avatar:', e);
     }
@@ -137,7 +133,6 @@ export default function SettingsScreen() {
   };
 
   const handleCancelAvatar = () => {
-    if (settings.timerSoundEnabled) playClickSound();
     setStagedAvatarId(settings.avatarId || 'bunny_boy');
     setIsAvatarModalVisible(false);
   };
@@ -166,9 +161,6 @@ export default function SettingsScreen() {
   const toggleThemeMode = async (mode: 'dark' | 'light') => {
     try {
       await update('theme', mode);
-      if (settings.timerSoundEnabled) {
-        playClickSound();
-      }
     } catch (err) {
       console.warn('Failed to switch theme:', err);
     }
@@ -177,9 +169,6 @@ export default function SettingsScreen() {
   const toggleAudioFeedback = async () => {
     const next = !settings.timerSoundEnabled;
     await update('timerSoundEnabled', next);
-    if (next) {
-      playClickSound();
-    }
   };
 
   const resetAllData = () => {
@@ -564,7 +553,6 @@ export default function SettingsScreen() {
             <View style={styles.avatarCategoryTabsRow}>
               <SmoothPressable
                 onPress={() => {
-                  if (settings.timerSoundEnabled) playClickSound();
                   setAvatarCategory('male');
                 }}
                 style={[
@@ -594,7 +582,6 @@ export default function SettingsScreen() {
 
               <SmoothPressable
                 onPress={() => {
-                  if (settings.timerSoundEnabled) playClickSound();
                   setAvatarCategory('female');
                 }}
                 style={[
@@ -632,7 +619,6 @@ export default function SettingsScreen() {
                     <SmoothPressable
                       key={av.id}
                       onPress={() => {
-                        if (settings.timerSoundEnabled) playClickSound();
                         setStagedAvatarId(av.id);
                       }}
                       style={[
