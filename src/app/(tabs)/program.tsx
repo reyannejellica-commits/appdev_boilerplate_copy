@@ -1,3 +1,5 @@
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import {
   Image,
@@ -18,6 +20,7 @@ import { getAvatarById } from '@/utils/profileOptions';
 
 export default function ProgramScreen() {
   const theme = useTheme();
+  const router = useRouter();
   const { settings, update } = useSettings();
   const { t } = useTranslation();
   const [awakeningOpen, setAwakeningOpen] = useState(false);
@@ -84,6 +87,21 @@ export default function ProgramScreen() {
               </Text>
             </View>
           </SmoothPressable>
+
+          <View style={styles.topHunterActions}>
+            <SmoothPressable
+              onPress={() => router.push('/settings')}
+              style={[
+                styles.headerActionBtn,
+                { backgroundColor: theme.cardSecondary, borderColor: theme.border },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Open Settings"
+              hitSlop={8}
+            >
+              <Ionicons name="settings-sharp" size={18} color={theme.tint} />
+            </SmoothPressable>
+          </View>
         </View>
 
         {/* 2. SCREEN TITLE & SUBTITLE */}
@@ -267,6 +285,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     marginTop: 2,
+  },
+  topHunterActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerActionBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 1.2,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // TITLE SECTION

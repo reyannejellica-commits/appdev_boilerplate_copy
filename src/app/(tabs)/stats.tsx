@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Image,
@@ -69,6 +70,7 @@ const MONARCH_SHOP_ITEMS: ShopItem[] = [
 
 export default function StatsScreen() {
   const theme = useTheme();
+  const router = useRouter();
   const { settings } = useSettings();
   const { t } = useTranslation();
 
@@ -243,6 +245,21 @@ export default function StatsScreen() {
             </Text>
           </View>
         </SmoothPressable>
+
+        <View style={styles.topHunterActions}>
+          <SmoothPressable
+            onPress={() => router.push('/settings')}
+            style={[
+              styles.headerActionBtn,
+              { backgroundColor: theme.cardSecondary, borderColor: theme.border },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Open Settings"
+            hitSlop={8}
+          >
+            <Ionicons name="settings-sharp" size={18} color={theme.tint} />
+          </SmoothPressable>
+        </View>
       </View>
 
       <ScrollView
@@ -687,6 +704,19 @@ const styles = StyleSheet.create({
   questSubtitle: {
     fontSize: 13,
     marginTop: 2,
+  },
+  topHunterActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerActionBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 1.2,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   scroll: {
     flex: 1,

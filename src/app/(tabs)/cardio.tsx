@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
@@ -47,6 +48,7 @@ const ACTIVITIES: ActivityMeta[] = [
 
 export default function CardioScreen() {
   const theme = useTheme();
+  const router = useRouter();
   const { settings } = useSettings();
   const { t } = useTranslation();
 
@@ -465,6 +467,21 @@ export default function CardioScreen() {
               </Text>
             </View>
           </SmoothPressable>
+
+          <View style={styles.topHunterActions}>
+            <SmoothPressable
+              onPress={() => router.push('/settings')}
+              style={[
+                styles.headerActionBtn,
+                { backgroundColor: theme.cardSecondary, borderColor: theme.border },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Open Settings"
+              hitSlop={8}
+            >
+              <Ionicons name="settings-sharp" size={18} color={theme.tint} />
+            </SmoothPressable>
+          </View>
         </View>
 
         {/* 2. SECTION HEADER */}
@@ -993,12 +1010,26 @@ const styles = StyleSheet.create({
   topHunterBar: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
   },
   topHunterPressable: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     flex: 1,
+  },
+  topHunterActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerActionBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 1.2,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   topAvatarWrapper: {
     marginRight: 10,
