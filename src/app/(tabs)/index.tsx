@@ -705,6 +705,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   topHunterName: {
+    fontFamily: 'Poppins-Bold',
     fontSize: 19,
     fontWeight: '900',
     letterSpacing: 0.2,
@@ -716,12 +717,14 @@ const styles = StyleSheet.create({
     borderRadius: 5,
   },
   rankBadgeText: {
+    fontFamily: 'Poppins-Bold',
     color: '#FFFFFF',
     fontSize: 11,
     fontWeight: '900',
     letterSpacing: 0.6,
   },
   topQuestSubtitle: {
+    fontFamily: 'Poppins-Medium',
     fontSize: 13,
     fontWeight: '600',
     marginTop: 2,

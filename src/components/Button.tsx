@@ -80,6 +80,6 @@ export function IconButton({ icon, label, variant = 'secondary', loading = false
 
 const styles = StyleSheet.create({
   button: { minHeight: 48, minWidth: 48, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  label: { fontSize: 16, fontWeight: '600', textAlign: 'center', flexShrink: 1 },
+  label: { fontFamily: 'Poppins-Bold', fontSize: 16, fontWeight: '700', textAlign: 'center', flexShrink: 1 },
   iconButton: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
 });

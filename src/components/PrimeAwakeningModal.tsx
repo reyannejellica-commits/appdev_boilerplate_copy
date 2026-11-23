@@ -330,6 +330,7 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
   },
   mainTitle: {
+    fontFamily: 'Poppins-Bold',
     color: '#FFFFFF',
     fontSize: 23,
     fontWeight: '900',
@@ -337,6 +338,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   subtitle: {
+    fontFamily: 'Poppins-Regular',
     color: '#94A3B8',
     fontSize: 13,
     textAlign: 'center',
@@ -414,12 +416,14 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   fieldLabel: {
+    fontFamily: 'Poppins-Bold',
     color: '#94A3B8',
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: 0.8,
   },
   inputBox: {
+    fontFamily: 'Poppins-SemiBold',
     borderRadius: 14,
     borderWidth: 1.2,
     fontSize: 16,
@@ -448,12 +452,14 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   programPillText: {
+    fontFamily: 'Poppins-Medium',
     color: '#94A3B8',
     fontSize: 12.5,
     fontWeight: '700',
     textAlign: 'center',
   },
   programPillTextSelected: {
+    fontFamily: 'Poppins-Bold',
     color: '#FFFFFF',
     fontWeight: '900',
   },
@@ -469,6 +475,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   startPrimeBtnText: {
+    fontFamily: 'Poppins-Bold',
     color: '#FFFFFF',
     fontSize: 15.5,
     fontWeight: '900',

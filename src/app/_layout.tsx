@@ -1,3 +1,4 @@
+import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
@@ -15,6 +16,14 @@ export default function RootLayout() {
   const theme = useTheme();
   const [ready, setReady] = useState(false);
 
+  const [fontsLoaded] = useFonts({
+    'Poppins-Regular': require('../../assets/fonts/Poppins-Regular.ttf'),
+    'Poppins-Medium': require('../../assets/fonts/Poppins-Medium.ttf'),
+    'Poppins-SemiBold': require('../../assets/fonts/Poppins-SemiBold.ttf'),
+    'Poppins-Bold': require('../../assets/fonts/Poppins-Bold.ttf'),
+    'Poppins-ExtraBold': require('../../assets/fonts/Poppins-ExtraBold.ttf'),
+  });
+
   useEffect(() => {
     // Open + migrate the database and read the local model's on-disk
     // state before rendering any screen.
@@ -23,7 +32,7 @@ export default function RootLayout() {
       .finally(() => setReady(true));
   }, []);
 
-  if (!ready) {
+  if (!ready || !fontsLoaded) {
     return (
       <View style={[styles.loading, { backgroundColor: theme.background }]}>
         <ActivityIndicator color={theme.tint} />
@@ -63,7 +72,8 @@ function RootNavigator() {
       <Stack
         screenOptions={{
           headerStyle: { backgroundColor: theme.card },
-          headerTintColor: theme.text,
+          headerTitleStyle: { fontFamily: 'Poppins-Bold', fontSize: 17 },
+          headerTintColor: theme.tint,
           contentStyle: { backgroundColor: theme.background },
           animation: reduceMotion ? 'none' : 'slide_from_right',
         }}

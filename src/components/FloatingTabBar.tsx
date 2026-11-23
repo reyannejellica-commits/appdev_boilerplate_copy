@@ -75,13 +75,14 @@ export function FloatingTabBar({ state, descriptors, navigation }: TabBarProps) 
         style={[
           styles.container,
           {
-            backgroundColor: isDark ? theme.card : '#FFFFFFFA',
-            borderColor: theme.borderRose,
+            backgroundColor: isDark ? 'rgba(22, 14, 30, 0.94)' : 'rgba(255, 240, 246, 0.96)',
+            borderColor: theme.tint,
+            borderWidth: 2,
             shadowColor: theme.glow,
-            shadowOffset: { width: 0, height: 0 },
-            shadowOpacity: isDark ? 0.7 : 0.4,
-            shadowRadius: 16,
-            elevation: 10,
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: isDark ? 0.9 : 0.6,
+            shadowRadius: 20,
+            elevation: 14,
           },
         ]}
       >
@@ -90,7 +91,7 @@ export function FloatingTabBar({ state, descriptors, navigation }: TabBarProps) 
           const { title } = descriptors[route.key]?.options ?? {};
           const tabColor = theme.tint;
           const tabGlow = theme.glow;
-          const inactiveColor = isDark ? '#64748B' : '#94A3B8';
+          const inactiveColor = isDark ? '#7E768E' : '#94A3B8';
 
           return (
             <SmoothPressable
@@ -107,13 +108,14 @@ export function FloatingTabBar({ state, descriptors, navigation }: TabBarProps) 
                   focused && [
                     styles.activeTabContent,
                     {
-                      backgroundColor: `${tabColor}26`,
+                      backgroundColor: `${tabColor}33`,
                       borderColor: tabColor,
+                      borderWidth: 1.5,
                       shadowColor: tabGlow,
                       shadowOffset: { width: 0, height: 0 },
-                      shadowOpacity: 0.7,
-                      shadowRadius: 10,
-                      elevation: 6,
+                      shadowOpacity: 0.85,
+                      shadowRadius: 12,
+                      elevation: 7,
                     },
                   ],
                 ]}
@@ -127,7 +129,8 @@ export function FloatingTabBar({ state, descriptors, navigation }: TabBarProps) 
                     styles.label,
                     {
                       color: focused ? tabColor : inactiveColor,
-                      fontWeight: focused ? '900' : '700',
+                      fontFamily: focused ? 'Poppins-Bold' : 'Poppins-SemiBold',
+                      fontWeight: focused ? '900' : '600',
                     },
                   ]}
                 >
@@ -189,8 +192,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   label: {
-    fontSize: 12,
+    fontFamily: 'Poppins-Medium',
+    fontSize: 11.5,
     marginTop: 2,
-    letterSpacing: 0.4,
+    letterSpacing: 0.3,
   },
 });

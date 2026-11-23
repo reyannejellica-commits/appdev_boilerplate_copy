@@ -3,6 +3,14 @@ import { type ThemeColorKey, type ThemeMode } from '@/settings/storage';
 
 export type { ThemeColorKey };
 
+export const FONTS = {
+  regular: 'Poppins-Regular',
+  medium: 'Poppins-Medium',
+  semiBold: 'Poppins-SemiBold',
+  bold: 'Poppins-Bold',
+  extraBold: 'Poppins-ExtraBold',
+} as const;
+
 export interface Theme {
   background: string;
   backgroundSecondary: string;

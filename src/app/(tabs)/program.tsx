@@ -244,6 +244,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   topHunterName: {
+    fontFamily: 'Poppins-Bold',
     fontSize: 19,
     fontWeight: '900',
     letterSpacing: 0.2,
@@ -255,12 +256,14 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   rankBadgeText: {
+    fontFamily: 'Poppins-Bold',
     color: '#FFFFFF',
     fontSize: 11.5,
     fontWeight: '900',
     letterSpacing: 0.6,
   },
   topQuestSubtitle: {
+    fontFamily: 'Poppins-Medium',
     fontSize: 13,
     fontWeight: '600',
     marginTop: 2,
@@ -271,12 +274,14 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   screenMainTitle: {
+    fontFamily: 'Poppins-Bold',
     fontSize: 23,
     fontWeight: '900',
     letterSpacing: 0.2,
     marginBottom: 4,
   },
   screenSubtitle: {
+    fontFamily: 'Poppins-Regular',
     fontSize: 14,
     fontWeight: '600',
   },
@@ -292,6 +297,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   programTagText: {
+    fontFamily: 'Poppins-Bold',
     fontSize: 12,
     fontWeight: '900',
     letterSpacing: 0.8,
@@ -299,12 +305,14 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   programTitleText: {
+    fontFamily: 'Poppins-Bold',
     fontSize: 21,
     fontWeight: '900',
     letterSpacing: 0.2,
     marginBottom: 6,
   },
   programDescText: {
+    fontFamily: 'Poppins-Regular',
     fontSize: 14,
     lineHeight: 20,
     fontWeight: '500',
@@ -323,6 +331,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   dayPillText: {
+    fontFamily: 'Poppins-Medium',
     fontSize: 12.5,
     fontWeight: '700',
   },
@@ -344,6 +353,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.2,
   },
   selectBtnText: {
+    fontFamily: 'Poppins-Bold',
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '900',
