@@ -89,9 +89,21 @@ export function FloatingTabBar({ state, descriptors, navigation }: TabBarProps) 
         {visibleRoutes.map((route) => {
           const focused = state.routes[state.index]?.key === route.key;
           const { title } = descriptors[route.key]?.options ?? {};
-          const tabColor = theme.tint;
-          const tabGlow = theme.glow;
-          const inactiveColor = isDark ? '#7E768E' : '#94A3B8';
+          
+          // Dedicated vibrant iconic colors for every single tab
+          const tabColorMap: Record<string, { color: string; glow: string }> = {
+            index: { color: theme.tint, glow: theme.glow },     // Home: Current theme glow (e.g. Rose Pink)
+            program: { color: '#38BDF8', glow: '#0EA5E9' },   // Program: Electric Sky Blue
+            cardio: { color: '#F43F5E', glow: '#FB7185' },    // Cardio: Energetic Neon Rose
+            stats: { color: '#A855F7', glow: '#C084FC' },     // Stats: Monarch Neon Purple
+          };
+
+          const tabConfig = tabColorMap[route.name] || {
+            color: theme.tint,
+            glow: theme.glow,
+          };
+          const itemColor = tabConfig.color;
+          const itemGlow = tabConfig.glow;
 
           return (
             <SmoothPressable
@@ -108,10 +120,10 @@ export function FloatingTabBar({ state, descriptors, navigation }: TabBarProps) 
                   focused && [
                     styles.activeTabContent,
                     {
-                      backgroundColor: `${tabColor}33`,
-                      borderColor: tabColor,
+                      backgroundColor: `${itemColor}33`,
+                      borderColor: itemColor,
                       borderWidth: 1.5,
-                      shadowColor: tabGlow,
+                      shadowColor: itemGlow,
                       shadowOffset: { width: 0, height: 0 },
                       shadowOpacity: 0.85,
                       shadowRadius: 12,
@@ -120,15 +132,25 @@ export function FloatingTabBar({ state, descriptors, navigation }: TabBarProps) 
                   ],
                 ]}
               >
-                <View style={styles.iconWrap}>
-                  {icon(route, focused, 23, focused ? tabColor : inactiveColor)}
+                <View
+                  style={[
+                    styles.iconWrap,
+                    {
+                      shadowColor: itemGlow,
+                      shadowOffset: { width: 0, height: 0 },
+                      shadowOpacity: focused ? 0.9 : 0.45,
+                      shadowRadius: focused ? 8 : 4,
+                    },
+                  ]}
+                >
+                  {icon(route, focused, 23, itemColor)}
                 </View>
                 <Text
                   numberOfLines={1}
                   style={[
                     styles.label,
                     {
-                      color: focused ? tabColor : inactiveColor,
+                      color: focused ? itemColor : isDark ? '#E2E8F0' : '#475569',
                       fontFamily: focused ? 'Poppins-Bold' : 'Poppins-SemiBold',
                       fontWeight: focused ? '900' : '600',
                     },
