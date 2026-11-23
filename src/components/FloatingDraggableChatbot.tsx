@@ -1,8 +1,9 @@
-import { Ionicons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { usePathname, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Animated,
+  Easing,
   PanResponder,
   StyleSheet,
   View,
@@ -17,12 +18,14 @@ const BUTTON_SIZE = 58;
 const EDGE_MARGIN = 16;
 
 /**
- * Premium Rose Pink Floating Draggable Chatbot.
+ * Premium Draggable Dumbbell AI Chatbot.
  * Features:
+ * - Iconic fitness Dumbbell icon with dynamic glow
+ * - Playful idle hopping / bouncing animation ("natalon ng konti")
  * - Fluid drag-and-drop gesture across screen boundaries
  * - Magnetic spring snap to left/right device edges on release
  * - Tactile scale-up feedback during interaction
- * - Luminous white-pink edge highlight & radial neon rose glow
+ * - Luminous neon aura glow matching active theme
  * - Tap detection (navigation to Coach chat)
  */
 export function FloatingDraggableChatbot() {
@@ -51,10 +54,93 @@ export function FloatingDraggableChatbot() {
   const [scale] = useState(() => new Animated.Value(1));
   const [isDragging, setIsDragging] = useState(false);
 
+  // Playful idle hopping / jumping animations
+  const [bounceAnim] = useState(() => new Animated.Value(0));
+  const [tiltAnim] = useState(() => new Animated.Value(0));
+
   // Adjust default position if dimensions change
   useEffect(() => {
     pan.setValue({ x: defaultX, y: defaultY });
   }, [defaultX, defaultY, pan]);
+
+  // Gentle hopping / jumping loop when idle
+  useEffect(() => {
+    if (isDragging || isChatScreen) {
+      bounceAnim.setValue(0);
+      tiltAnim.setValue(0);
+      return;
+    }
+
+    const hopSequence = Animated.loop(
+      Animated.sequence([
+        // Idle rest pause between hops
+        Animated.delay(1600),
+
+        // Gentle hop up & land with subtle tilt
+        Animated.parallel([
+          Animated.sequence([
+            Animated.timing(bounceAnim, {
+              toValue: -9,
+              duration: 250,
+              easing: Easing.out(Easing.quad),
+              useNativeDriver: true,
+            }),
+            Animated.timing(bounceAnim, {
+              toValue: 0,
+              duration: 220,
+              easing: Easing.in(Easing.quad),
+              useNativeDriver: true,
+            }),
+            // Soft landing rebound
+            Animated.timing(bounceAnim, {
+              toValue: -3,
+              duration: 130,
+              easing: Easing.out(Easing.quad),
+              useNativeDriver: true,
+            }),
+            Animated.timing(bounceAnim, {
+              toValue: 0,
+              duration: 130,
+              easing: Easing.in(Easing.quad),
+              useNativeDriver: true,
+            }),
+          ]),
+          Animated.sequence([
+            Animated.timing(tiltAnim, {
+              toValue: -1,
+              duration: 250,
+              easing: Easing.out(Easing.quad),
+              useNativeDriver: true,
+            }),
+            Animated.timing(tiltAnim, {
+              toValue: 0,
+              duration: 220,
+              easing: Easing.in(Easing.quad),
+              useNativeDriver: true,
+            }),
+            Animated.timing(tiltAnim, {
+              toValue: 0.4,
+              duration: 130,
+              easing: Easing.out(Easing.quad),
+              useNativeDriver: true,
+            }),
+            Animated.timing(tiltAnim, {
+              toValue: 0,
+              duration: 130,
+              easing: Easing.in(Easing.quad),
+              useNativeDriver: true,
+            }),
+          ]),
+        ]),
+      ])
+    );
+
+    hopSequence.start();
+
+    return () => {
+      hopSequence.stop();
+    };
+  }, [isDragging, isChatScreen, bounceAnim, tiltAnim]);
 
   const panResponder = useMemo(
     () =>
@@ -115,6 +201,11 @@ export function FloatingDraggableChatbot() {
     [pan, scale, screenWidth, minX, maxX, minY, maxY, router]
   );
 
+  const tiltInterpolation = tiltAnim.interpolate({
+    inputRange: [-1, 0, 1],
+    outputRange: ['-8deg', '0deg', '8deg'],
+  });
+
   if (isChatScreen) {
     return null;
   }
@@ -122,6 +213,9 @@ export function FloatingDraggableChatbot() {
   return (
     <Animated.View
       {...panResponder.panHandlers}
+      accessibilityRole="button"
+      accessibilityLabel="Open PeakFit AI Sports Coach"
+      accessibilityHint="Tap to consult your AI Coach or drag to reposition"
       style={[
         styles.container,
         {
@@ -133,23 +227,43 @@ export function FloatingDraggableChatbot() {
         },
       ]}
     >
-      <View
+      <Animated.View
         style={[
           styles.bubble,
           {
-            backgroundColor: settings.theme === 'dark' ? '#151116FA' : '#FFFFFFFA',
-            borderColor: theme.borderRose,
+            backgroundColor: settings.theme === 'dark' ? '#141217FA' : '#FFFFFFAA',
+            borderColor: theme.tint,
             shadowColor: theme.glow,
-            shadowOpacity: settings.theme === 'dark' ? 0.75 : 0.45,
+            shadowOpacity: settings.theme === 'dark' ? 0.85 : 0.5,
+            transform: [
+              { translateY: bounceAnim },
+              { rotate: tiltInterpolation },
+            ],
           },
           isDragging && styles.bubbleDragging,
         ]}
       >
-        <Ionicons name="chatbubble-ellipses" size={26} color={theme.tint} />
+        {/* Subtle radial inner glow backdrop */}
+        <View
+          style={[
+            styles.innerGlow,
+            { backgroundColor: `${theme.tint}18` },
+          ]}
+        />
+        {/* Dumbbell Icon */}
+        <MaterialCommunityIcons name="dumbbell" size={27} color={theme.tint} />
 
         {/* Status Live Indicator Dot */}
-        <View style={[styles.statusDot, { backgroundColor: theme.success }]} />
-      </View>
+        <View
+          style={[
+            styles.statusDot,
+            {
+              backgroundColor: theme.success,
+              borderColor: settings.theme === 'dark' ? '#151116' : '#FFFFFF',
+            },
+          ]}
+        />
+      </Animated.View>
     </Animated.View>
   );
 }
@@ -162,23 +276,32 @@ const styles = StyleSheet.create({
     width: BUTTON_SIZE,
     height: BUTTON_SIZE,
     zIndex: 9999,
+    elevation: 20,
   },
   bubble: {
     width: BUTTON_SIZE,
     height: BUTTON_SIZE,
-    borderRadius: 20,
-    borderWidth: 1.5,
+    borderRadius: 22,
+    borderWidth: 1.8,
     alignItems: 'center',
     justifyContent: 'center',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.85,
     shadowRadius: 18,
-    elevation: 12,
+    elevation: 14,
+    overflow: 'hidden',
+  },
+  innerGlow: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   bubbleDragging: {
     shadowOpacity: 1,
-    shadowRadius: 24,
-    elevation: 16,
+    shadowRadius: 26,
+    elevation: 18,
   },
   statusDot: {
     position: 'absolute',
@@ -188,7 +311,6 @@ const styles = StyleSheet.create({
     height: 9,
     borderRadius: 4.5,
     borderWidth: 1.5,
-    borderColor: '#151116',
   },
 });
 

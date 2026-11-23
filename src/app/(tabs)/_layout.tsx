@@ -3,6 +3,7 @@ import { Tabs } from 'expo-router';
 import React from 'react';
 import { View, type ColorValue } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { FloatingDraggableChatbot } from '@/components/FloatingDraggableChatbot';
 import { FloatingTabBar, TAB_BAR_GAP, TAB_BAR_HEIGHT } from '@/components/FloatingTabBar';
 import { useTranslation } from '@/i18n';
 import { useTheme } from '@/theme';
@@ -75,6 +76,9 @@ export default function TabLayout() {
           }}
         />
       </Tabs>
+
+      {/* Floating Draggable AI Coach Chatbot Button */}
+      <FloatingDraggableChatbot />
     </View>
   );
 }
