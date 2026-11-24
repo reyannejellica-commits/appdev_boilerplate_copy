@@ -58,12 +58,12 @@ const id = 'main';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
-/** Starter prompts shown on an empty chat. PeakFit AI coaching topics. */
+/** Starter prompts shown on an empty chat. PeakFit AI coaching & general topics. */
 export const SUGGESTIONS: { icon: IconName; label: string; prompt: string }[] = [
   { icon: 'barbell-outline', label: 'Optimize PPL split', prompt: 'Analyze my Push, Pull, Legs workout split and give me recommendations for progressive overload and recovery.' },
-  { icon: 'flame-outline', label: 'Nutrition & macros', prompt: 'What daily protein, carbs, and caloric intake should I hit for muscle hypertrophy and strength?' },
-  { icon: 'walk-outline', label: '10km Cardio plan', prompt: 'Design an endurance running protocol to hit my daily 10km cardio goal without losing strength.' },
-  { icon: 'shield-outline', label: 'Form & joint health', prompt: 'What are the essential cues to protect my shoulders and elbows during heavy bench press and overhead presses?' },
+  { icon: 'flame-outline', label: 'Paano pumayat & diet', prompt: 'Paano pumayat nang ligtas at ano ang magandang Pinoy high-protein meals araw-araw?' },
+  { icon: 'calculator-outline', label: 'Compute my macros (70kg)', prompt: '70kg ang timbang ko, i-compute mo ang daily calories, protein, at water intake ko.' },
+  { icon: 'home-outline', label: 'Home no-equipment workout', prompt: 'Bigyan mo ako ng complete home workout routine kahit walang gym equipment.' },
 ];
 
 export default function ChatScreen() {

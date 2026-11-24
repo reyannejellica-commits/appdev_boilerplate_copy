@@ -3,7 +3,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { getDb } from '@/db/client';
 import { refreshModelStatus } from '@/ai/local';
 import { DownloadStatusIndicator } from '@/components/DownloadStatusIndicator';
@@ -57,6 +57,20 @@ function RootNavigator() {
   useEffect(() => {
     void SystemUI.setBackgroundColorAsync(theme.background);
   }, [theme.background]);
+
+  // Ensure the web browser tab always displays the PeakFit logo (overrides any cached localhost favicon).
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    document.title = 'PeakFit';
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none"><rect width="64" height="64" rx="16" fill="#0B0713"/><rect x="2" y="2" width="60" height="60" rx="14" stroke="${theme.tint}" stroke-width="2.5"/><path d="M 16 42 L 32 17 L 48 42" stroke="#F1E8EC" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M 12 31 L 52 31" stroke="#F1E8EC" stroke-width="4.4" stroke-linecap="round"/><path d="M 11 22 L 11 40" stroke="${theme.tint}" stroke-width="6" stroke-linecap="round"/><path d="M 53 22 L 53 40" stroke="${theme.tint}" stroke-width="6" stroke-linecap="round"/></svg>`;
+    const dataUri = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+    document.querySelectorAll("link[rel*='icon']").forEach((el) => el.remove());
+    const link = document.createElement('link');
+    link.rel = 'icon';
+    link.type = 'image/svg+xml';
+    link.href = dataUri;
+    document.head.appendChild(link);
+  }, [theme.tint]);
 
   if (!ready) {
     return (

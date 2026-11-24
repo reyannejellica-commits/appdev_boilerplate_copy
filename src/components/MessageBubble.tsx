@@ -49,7 +49,16 @@ export function MessageBubble({ message, pendingLabel, onRetry }: Props) {
       ]}
     >
       {!isUser && (
-        <View style={[styles.avatar, { backgroundColor: theme.buttonPrimary }]}>
+        <View
+          style={[
+            styles.avatar,
+            {
+              backgroundColor: theme.buttonPrimary,
+              borderColor: `${theme.tint}60`,
+              shadowColor: theme.glow,
+            },
+          ]}
+        >
           <Ionicons name="sparkles" size={14} color={theme.buttonPrimaryText} />
         </View>
       )}
@@ -67,8 +76,13 @@ export function MessageBubble({ message, pendingLabel, onRetry }: Props) {
               backgroundColor: isUser
                 ? theme.userBubble
                 : theme.assistantBubble,
-              borderColor: message.status === 'error' ? theme.danger : !isUser ? theme.borderRose : 'transparent',
-              borderWidth: message.status === 'error' || !isUser ? 1.2 : 0,
+              borderColor:
+                message.status === 'error'
+                  ? theme.danger
+                  : !isUser
+                  ? theme.border
+                  : 'transparent',
+              borderWidth: message.status === 'error' || !isUser ? 1 : 0,
             },
           ]}
         >

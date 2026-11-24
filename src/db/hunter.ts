@@ -69,17 +69,17 @@ export async function getHunterProfile(defaultName = 'Hunter'): Promise<HunterPr
   const profile: HunterProfile = {
     id: newId(),
     hunter_name: defaultName,
-    rank: 'B-Rank',
-    level: 20,
-    exp: 340,
-    max_exp: 1000,
-    coins: 190,
-    streak_days: 4,
+    rank: 'E-Rank',
+    level: 1,
+    exp: 0,
+    max_exp: 100,
+    coins: 50,
+    streak_days: 1,
     last_active_date: today,
-    str: 18,
-    agi: 16,
-    sta: 20,
-    int_stat: 14,
+    str: 10,
+    agi: 10,
+    sta: 10,
+    int_stat: 10,
   };
 
   try {
@@ -129,11 +129,18 @@ export async function updateHunterName(name: string): Promise<void> {
   await db.runAsync('UPDATE hunter_profile SET hunter_name = ?', name.trim() || 'Hunter');
 }
 
-/** Add EXP and calculate leveling */
-export async function addHunterExp(expGained: number): Promise<{ newLevel: number; leveledUp: boolean }> {
+/** Add EXP and calculate leveling & rank ascension */
+export async function addHunterExp(expGained: number): Promise<{
+  newLevel: number;
+  leveledUp: boolean;
+  oldRank: HunterProfile['rank'];
+  newRank: HunterProfile['rank'];
+  rankAscended: boolean;
+}> {
   const db = await getDb();
   const profile = await getHunterProfile();
   let { level, exp, max_exp, str, agi, sta, int_stat } = profile;
+  const oldRank = profile.rank;
 
   exp += expGained;
   let leveledUp = false;
@@ -149,7 +156,8 @@ export async function addHunterExp(expGained: number): Promise<{ newLevel: numbe
     leveledUp = true;
   }
 
-  const rank = calculateRank(level);
+  const newRank = calculateRank(level);
+  const rankAscended = oldRank !== newRank;
 
   await db.runAsync(
     `UPDATE hunter_profile 
@@ -157,7 +165,7 @@ export async function addHunterExp(expGained: number): Promise<{ newLevel: numbe
     level,
     exp,
     max_exp,
-    rank,
+    newRank,
     str,
     agi,
     sta,
@@ -165,7 +173,7 @@ export async function addHunterExp(expGained: number): Promise<{ newLevel: numbe
     getTodayDateString()
   );
 
-  return { newLevel: level, leveledUp };
+  return { newLevel: level, leveledUp, oldRank, newRank, rankAscended };
 }
 
 /** Default daily quests based on Solo Leveling protocol */

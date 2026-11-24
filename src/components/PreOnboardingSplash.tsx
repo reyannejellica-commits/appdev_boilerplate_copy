@@ -10,11 +10,10 @@ import Svg, {
   Defs,
   LinearGradient,
   Line,
-  Path,
   Rect,
   Stop,
 } from 'react-native-svg';
-import { useTheme } from '@/theme';
+import { MonarchCyberVisual } from '@/components/MonarchCyberVisual';
 
 const DUMBBELLS_BG = require('../../assets/images/gym_dumbbells_dark.jpg');
 
@@ -129,8 +128,6 @@ interface PreOnboardingSplashProps {
 }
 
 export function PreOnboardingSplash({ onFinish }: PreOnboardingSplashProps) {
-  const theme = useTheme();
-
   // Gentle ambient floating / breathing motion for the background dumbbell imagery
   const [bgAnim] = useState(() => new Animated.Value(0));
 
@@ -248,51 +245,12 @@ export function PreOnboardingSplash({ onFinish }: PreOnboardingSplashProps) {
           },
         ]}
       >
-        <Svg width={58} height={58} viewBox="0 0 42 42" fill="none">
-          {/* Dynamic Mountain Peak Chevron (Summit) */}
-          <Path
-            d="M 10 27 L 21 11.5 L 32 27"
-            stroke="#F1E8EC"
-            strokeWidth="3.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          {/* Barbell Center Bar */}
-          <Path
-            d="M 7.5 20 L 34.5 20"
-            stroke="#F1E8EC"
-            strokeWidth="3.0"
-            strokeLinecap="round"
-          />
-          {/* Signature Rose Pink Accent Weight Plates */}
-          <Path
-            d="M 7 14.5 L 7 25.5"
-            stroke={theme.tint}
-            strokeWidth="4.0"
-            strokeLinecap="round"
-          />
-          <Path
-            d="M 35 14.5 L 35 25.5"
-            stroke={theme.tint}
-            strokeWidth="4.0"
-            strokeLinecap="round"
-          />
-          {/* Inner Collar Precision Highlights */}
-          <Path
-            d="M 11.5 17 L 11.5 23"
-            stroke={theme.accentHighlight}
-            strokeWidth="2.2"
-            strokeLinecap="round"
-            strokeOpacity="0.85"
-          />
-          <Path
-            d="M 30.5 17 L 30.5 23"
-            stroke={theme.accentHighlight}
-            strokeWidth="2.2"
-            strokeLinecap="round"
-            strokeOpacity="0.85"
-          />
-        </Svg>
+        <MonarchCyberVisual
+          variant="dumbbell"
+          size={84}
+          animated={false}
+          idPrefix="splash_logo"
+        />
       </Animated.View>
     </Pressable>
   );

@@ -1,6 +1,7 @@
 import Storage from 'expo-sqlite/kv-store';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
+import { getDb } from '@/db/client';
 
 export type ProviderId = 'cloud' | 'local' | 'builtin';
 export type LocalBackend = 'auto' | 'npu' | 'gpu' | 'cpu';
@@ -56,7 +57,7 @@ const KEYS = {
 const API_KEY_KEY = 'gemini_api_key';
 
 export const DEFAULT_SYSTEM_PROMPT =
-  'You are PeakFit Coach, an elite personal trainer and sports scientist. You provide precise, scientific advice on exercise technique, progressive overload, workout programming, periodization, recovery, and macronutrient nutrition. Your tone is professional, encouraging, analytical, and focused on sustainable athletic results.';
+  'You are PeakFit Coach, an intelligent, versatile AI assistant and elite sports scientist. Answer any question the user asks—whether about workouts, nutrition, health, daily life, academics, technology, or casual conversation—accurately, naturally, and helpfully in the same language they use (Tagalog, Taglish, or English). Never use raw asterisk clusters like ** or **** in your text; format lists cleanly with simple numbered points or dashes.';
 /** 'auto' = pick the best model the API key can use (see pickBestModel). */
 export const DEFAULT_GEMINI_MODEL = 'auto';
 
@@ -113,32 +114,83 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 async function readSettingString(key: string): Promise<string | null> {
+  // 1. Primary storage: SQLite database table `app_settings`
+  try {
+    const db = await getDb();
+    const row = await db.getFirstAsync<{ value: string }>(
+      'SELECT value FROM app_settings WHERE key = ? LIMIT 1',
+      [key]
+    );
+    if (row && row.value !== null && row.value !== undefined) {
+      return row.value;
+    }
+  } catch {
+    // Database initializing or pre-migration, proceed to fallback
+  }
+
+  // 2. Secondary fallback / legacy cache: KV Store or LocalStorage
   if (Platform.OS === 'web') {
     try {
       if (typeof localStorage !== 'undefined') {
-        return localStorage.getItem(`peakfit_${key}`);
+        const val = localStorage.getItem(`peakfit_${key}`);
+        if (val !== null) {
+          // Sync into SQLite in background
+          getDb().then((db) =>
+            db.runAsync(
+              'INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+              [key, val, Date.now()]
+            )
+          ).catch(() => { });
+          return val;
+        }
       }
-    } catch {}
+    } catch { }
     return null;
   }
   try {
-    return await Storage.getItemAsync(key);
+    const val = await Storage.getItemAsync(key);
+    if (val !== null) {
+      // Sync into SQLite in background
+      getDb().then((db) =>
+        db.runAsync(
+          'INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+          [key, val, Date.now()]
+        )
+      ).catch(() => { });
+      return val;
+    }
   } catch {
     try {
-      return Storage.getItem(key);
-    } catch {
-      return null;
-    }
+      const val = Storage.getItem(key);
+      if (val !== null) {
+        return val;
+      }
+    } catch { }
   }
+  return null;
 }
 
 async function writeSettingString(key: string, value: string): Promise<void> {
+  // 1. Primary write: SQLite database table `app_settings`
+  try {
+    const db = await getDb();
+    await db.runAsync(
+      `INSERT INTO app_settings (key, value, updated_at) 
+       VALUES (?, ?, ?) 
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      [key, value, Date.now()]
+    );
+  } catch (e) {
+    console.warn(`SQLite app_settings write failed for ${key}:`, e);
+  }
+
+  // 2. Secondary sync: KV Store or LocalStorage for instant cached reads
   if (Platform.OS === 'web') {
     try {
       if (typeof localStorage !== 'undefined') {
         localStorage.setItem(`peakfit_${key}`, value);
       }
-    } catch {}
+    } catch { }
     return;
   }
   try {
@@ -147,7 +199,7 @@ async function writeSettingString(key: string, value: string): Promise<void> {
     try {
       Storage.setItem(key, value);
     } catch (e) {
-      console.warn(`writeSettingString failed for ${key}:`, e);
+      console.warn(`Storage write failed for ${key}:`, e);
     }
   }
 }
@@ -278,11 +330,11 @@ export async function resetSettings(): Promise<void> {
           localStorage.removeItem(`peakfit_${k}`);
         });
       }
-    } catch {}
+    } catch { }
   } else {
     try {
       await Storage.clearAsync();
-    } catch {}
+    } catch { }
   }
   await saveSetting('geminiApiKey', '');
 }

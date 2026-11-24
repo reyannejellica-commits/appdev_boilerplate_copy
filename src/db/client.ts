@@ -106,6 +106,14 @@ const MIGRATIONS: string[] = [
     unlocked_at INTEGER NOT NULL
   );
   `,
+  // Migration 6: Persisted App Settings in SQLite
+  `
+  CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  `,
 ];
 
 export function newId(): string {

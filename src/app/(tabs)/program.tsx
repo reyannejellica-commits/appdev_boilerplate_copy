@@ -8,7 +8,9 @@ import {
   Text,
   View,
 } from 'react-native';
+import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { PrimeAwakeningModal } from '@/components/PrimeAwakeningModal';
+import { NotificationBellButton } from '@/components/NotificationModal';
 import { SmoothPressable } from '@/components/SmoothPressable';
 import { WORKOUT_PROGRAMS, type WorkoutProgram } from '@/db/programs';
 import { useTranslation } from '@/i18n';
@@ -89,6 +91,7 @@ export default function ProgramScreen() {
           </SmoothPressable>
 
           <View style={styles.topHunterActions}>
+            <NotificationBellButton />
             <SmoothPressable
               onPress={() => router.push('/settings')}
               style={[
@@ -125,14 +128,58 @@ export default function ProgramScreen() {
                 styles.programCard,
                 {
                   backgroundColor: theme.card,
-                  borderColor: isActive ? theme.tint : theme.borderRose,
-                  shadowColor: isActive ? theme.glow : theme.glow,
-                  shadowOpacity: isActive ? 0.7 : 0.35,
+                  borderColor: isActive ? theme.tint : theme.border,
+                  borderWidth: isActive ? 1.5 : 1,
+                  shadowColor: isActive ? theme.glow : '#000000',
+                  shadowOpacity: isActive ? 0.45 : 0.25,
+                  overflow: 'hidden',
                 },
               ]}
             >
-              {/* Top Split & Category Tag */}
-              <Text style={[styles.programTagText, { color: theme.tint }]}>{program.tag}</Text>
+              <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
+                <Defs>
+                  <RadialGradient id={`progGlow-${program.id}`} cx="12%" cy="15%" rx="80%" ry="85%">
+                    <Stop offset="0%" stopColor={theme.tint} stopOpacity={isActive ? '0.24' : '0.10'} />
+                    <Stop offset="100%" stopColor={theme.tint} stopOpacity="0" />
+                  </RadialGradient>
+                </Defs>
+                <Rect x="0" y="0" width="100%" height="100%" rx="18" fill={`url(#progGlow-${program.id})`} />
+              </Svg>
+
+              {/* Top Split & Category Tag + Active Badge */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <Text style={[styles.programTagText, { color: theme.tint, marginBottom: 0 }]}>
+                  {program.tag}
+                </Text>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4,
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                    borderRadius: 8,
+                    backgroundColor: isActive ? `${theme.tint}22` : theme.cardSecondary,
+                    borderWidth: 1,
+                    borderColor: isActive ? theme.tint : theme.border,
+                  }}
+                >
+                  <Ionicons
+                    name={isActive ? 'checkmark-circle' : 'calendar-outline'}
+                    size={11}
+                    color={isActive ? theme.tint : theme.textSecondary}
+                  />
+                  <Text
+                    style={{
+                      fontSize: 10.5,
+                      fontWeight: '800',
+                      color: isActive ? theme.tint : theme.textSecondary,
+                    }}
+                  >
+                    {isActive ? 'ACTIVE SPLIT' : `${program.days.length} DAYS/WK`}
+                  </Text>
+                </View>
+              </View>
 
               {/* Program Title */}
               <Text style={[styles.programTitleText, { color: theme.text }]}>
@@ -143,6 +190,46 @@ export default function ProgramScreen() {
               <Text style={[styles.programDescText, { color: theme.textSecondary }]}>
                 {program.description}
               </Text>
+
+              {/* Quick Specs Row */}
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4,
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                    borderRadius: 8,
+                    backgroundColor: theme.cardSecondary,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                  }}
+                >
+                  <Ionicons name="time-outline" size={11} color={theme.tint} />
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: theme.textSecondary }}>
+                    45–60 min/day
+                  </Text>
+                </View>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4,
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                    borderRadius: 8,
+                    backgroundColor: theme.cardSecondary,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                  }}
+                >
+                  <Ionicons name="trophy-outline" size={11} color="#FBBF24" />
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: theme.textSecondary }}>
+                    +100 EXP / Session
+                  </Text>
+                </View>
+              </View>
 
               {/* Day Pills Grid */}
               <View style={styles.dayPillsContainer}>

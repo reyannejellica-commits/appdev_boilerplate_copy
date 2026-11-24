@@ -1,23 +1,24 @@
+import { BlurView } from 'expo-blur';
 import type { Tabs } from 'expo-router';
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SmoothPressable } from '@/components/SmoothPressable';
 import { useSettings } from '@/settings/SettingsContext';
-import { useTheme } from '@/theme';
+import { FONTS, useTheme } from '@/theme';
 
 type TabBarProps = Parameters<NonNullable<React.ComponentProps<typeof Tabs>['tabBar']>>[0];
 
-export const TAB_BAR_HEIGHT = 72;
-export const TAB_BAR_GAP = 12;
+export const TAB_BAR_HEIGHT = 66;
+export const TAB_BAR_GAP = 24;
 
 /**
- * Ultra-Modern Floating Island Tab Bar
+ * Detached Floating Capsule Island Navigation Bar
  * Features:
- * - Floating glassmorphism pill with subtle border
- * - Active glowing amber capsule pill background
- * - Balanced icon + label hierarchy with tactile micro-interactions
- * - Smooth insets adaptation for all device screens
+ * - True elevated floating island detached from bottom & side edges
+ * - Translucent frosted glass blur (expo-blur) with top specular highlight rim
+ * - Full capsule pill geometry (borderRadius: 999) with deep floating drop shadow
+ * - Glowing active capsule indicator pill with active indicator dot
  */
 export function FloatingTabBar({ state, descriptors, navigation }: TabBarProps) {
   const theme = useTheme();
@@ -60,6 +61,7 @@ export function FloatingTabBar({ state, descriptors, navigation }: TabBarProps) 
     });
 
   const isDark = settings.theme === 'dark';
+  const floatBottom = Math.max(insets.bottom + 14, TAB_BAR_GAP);
 
   return (
     <View
@@ -67,101 +69,121 @@ export function FloatingTabBar({ state, descriptors, navigation }: TabBarProps) 
       style={[
         styles.wrapper,
         {
-          bottom: Math.max(insets.bottom, 12),
+          bottom: floatBottom,
         },
       ]}
     >
+      {/* Ambient under-glow shadow layer that makes the dock visibly levitate */}
       <View
         style={[
-          styles.container,
+          styles.floatingShadowShell,
           {
-            backgroundColor: isDark ? 'rgba(22, 14, 30, 0.94)' : 'rgba(255, 240, 246, 0.96)',
-            borderColor: theme.tint,
-            borderWidth: 2,
-            shadowColor: theme.glow,
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: isDark ? 0.9 : 0.6,
-            shadowRadius: 20,
-            elevation: 14,
+            shadowColor: isDark ? theme.glow : '#000000',
+            shadowOpacity: isDark ? 0.42 : 0.16,
           },
         ]}
       >
-        {visibleRoutes.map((route) => {
-          const focused = state.routes[state.index]?.key === route.key;
-          const { title } = descriptors[route.key]?.options ?? {};
-          
-          // Dedicated vibrant iconic colors for every single tab
-          const tabColorMap: Record<string, { color: string; glow: string }> = {
-            index: { color: theme.tint, glow: theme.glow },     // Home: Current theme glow (e.g. Rose Pink)
-            program: { color: '#38BDF8', glow: '#0EA5E9' },   // Program: Electric Sky Blue
-            cardio: { color: '#F43F5E', glow: '#FB7185' },    // Cardio: Energetic Neon Rose
-            stats: { color: '#A855F7', glow: '#C084FC' },     // Stats: Monarch Neon Purple
-          };
+        <View
+          style={[
+            styles.capsuleClip,
+            {
+              backgroundColor: isDark
+                ? 'rgba(15, 15, 22, 0.84)'
+                : 'rgba(255, 255, 255, 0.88)',
+              borderColor: isDark
+                ? 'rgba(255, 255, 255, 0.15)'
+                : 'rgba(15, 23, 42, 0.10)',
+            },
+          ]}
+        >
+          {Platform.OS !== 'web' && (
+            <BlurView
+              intensity={isDark ? 45 : 65}
+              tint={isDark ? 'dark' : 'light'}
+              style={StyleSheet.absoluteFill}
+            />
+          )}
 
-          const tabConfig = tabColorMap[route.name] || {
-            color: theme.tint,
-            glow: theme.glow,
-          };
-          const itemColor = tabConfig.color;
-          const itemGlow = tabConfig.glow;
+          {/* Top specular glass rim highlight */}
+          <View
+            pointerEvents="none"
+            style={[
+              styles.topRimHighlight,
+              {
+                backgroundColor: isDark
+                  ? 'rgba(255, 255, 255, 0.16)'
+                  : 'rgba(255, 255, 255, 0.85)',
+              },
+            ]}
+          />
 
-          return (
-            <SmoothPressable
-              key={route.key}
-              onPress={() => go(route, focused)}
-              accessibilityLabel={title ?? route.name}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: focused }}
-              style={styles.tabTouch}
-            >
-              <View
-                style={[
-                  styles.tabContent,
-                  focused && [
-                    styles.activeTabContent,
-                    {
-                      backgroundColor: `${itemColor}33`,
-                      borderColor: itemColor,
-                      borderWidth: 1.5,
-                      shadowColor: itemGlow,
-                      shadowOffset: { width: 0, height: 0 },
-                      shadowOpacity: 0.85,
-                      shadowRadius: 12,
-                      elevation: 7,
-                    },
-                  ],
-                ]}
-              >
-                <View
-                  style={[
-                    styles.iconWrap,
-                    {
-                      shadowColor: itemGlow,
-                      shadowOffset: { width: 0, height: 0 },
-                      shadowOpacity: focused ? 0.9 : 0.45,
-                      shadowRadius: focused ? 8 : 4,
-                    },
-                  ]}
+          <View style={styles.tabsRow}>
+            {visibleRoutes.map((route) => {
+              const focused = state.routes[state.index]?.key === route.key;
+              const { title } = descriptors[route.key]?.options ?? {};
+              const itemColor = focused
+                ? theme.tint
+                : isDark
+                ? '#94A3B8'
+                : '#64748B';
+
+              return (
+                <SmoothPressable
+                  key={route.key}
+                  onPress={() => go(route, focused)}
+                  accessibilityLabel={title ?? route.name}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: focused }}
+                  style={styles.tabTouch}
                 >
-                  {icon(route, focused, 23, itemColor)}
-                </View>
-                <Text
-                  numberOfLines={1}
-                  style={[
-                    styles.label,
-                    {
-                      color: focused ? itemColor : isDark ? '#E2E8F0' : '#475569',
-                      fontFamily: focused ? 'Poppins-Bold' : 'Poppins-SemiBold',
-                      fontWeight: focused ? '900' : '600',
-                    },
-                  ]}
-                >
-                  {title ?? route.name}
-                </Text>
-              </View>
-            </SmoothPressable>
-          );
-        })}
+                  <View
+                    style={[
+                      styles.tabContent,
+                      focused && [
+                        styles.activeTabContent,
+                        {
+                          backgroundColor: isDark
+                            ? `${theme.tint}22`
+                            : `${theme.tint}16`,
+                          borderColor: `${theme.tint}55`,
+                          shadowColor: theme.glow,
+                        },
+                      ],
+                    ]}
+                  >
+                    <View style={styles.iconWrap}>
+                      {icon(route, focused, 21, itemColor)}
+                    </View>
+                    <Text
+                      numberOfLines={1}
+                      style={[
+                        styles.label,
+                        {
+                          color: itemColor,
+                          fontFamily: focused ? FONTS.bold : FONTS.medium,
+                          fontWeight: focused ? '700' : '500',
+                        },
+                      ]}
+                    >
+                      {title ?? route.name}
+                    </Text>
+                    {focused && (
+                      <View
+                        style={[
+                          styles.activeDot,
+                          {
+                            backgroundColor: theme.tint,
+                            shadowColor: theme.glow,
+                          },
+                        ]}
+                      />
+                    )}
+                  </View>
+                </SmoothPressable>
+              );
+            })}
+          </View>
+        </View>
       </View>
     </View>
   );
@@ -173,23 +195,39 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 22,
+    zIndex: 100,
   },
-  container: {
+  floatingShadowShell: {
+    width: '100%',
+    maxWidth: 410,
+    borderRadius: 999,
+    shadowOffset: { width: 0, height: 14 },
+    shadowRadius: 28,
+    elevation: 20,
+  },
+  capsuleClip: {
+    width: '100%',
+    height: TAB_BAR_HEIGHT,
+    borderRadius: 999,
+    borderWidth: 1.2,
+    overflow: 'hidden',
+    justifyContent: 'center',
+  },
+  topRimHighlight: {
+    position: 'absolute',
+    top: 0,
+    left: 28,
+    right: 28,
+    height: 1,
+  },
+  tabsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    width: '100%',
-    maxWidth: 500,
-    height: TAB_BAR_HEIGHT,
-    paddingHorizontal: 6,
+    height: '100%',
+    paddingHorizontal: 7,
     paddingVertical: 6,
-    borderRadius: 24,
-    borderWidth: 1,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    elevation: 12,
   },
   tabTouch: {
     flex: 1,
@@ -198,25 +236,39 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   tabContent: {
-    width: '100%',
+    width: '94%',
     height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 18,
+    borderRadius: 999,
     borderWidth: 1,
     borderColor: 'transparent',
-    paddingVertical: 4,
+    paddingVertical: 3,
   },
-  activeTabContent: {},
+  activeTabContent: {
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 4,
+  },
   iconWrap: {
-    height: 25,
+    height: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
   label: {
-    fontFamily: 'Poppins-Medium',
-    fontSize: 11.5,
+    fontSize: 10.5,
+    marginTop: 1,
+    letterSpacing: 0.25,
+  },
+  activeDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
     marginTop: 2,
-    letterSpacing: 0.3,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.9,
+    shadowRadius: 4,
   },
 });
+

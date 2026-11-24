@@ -11,7 +11,9 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { PrimeAwakeningModal } from '@/components/PrimeAwakeningModal';
+import { NotificationBellButton } from '@/components/NotificationModal';
 import { SmoothPressable } from '@/components/SmoothPressable';
 import {
   clearCardioHistory,
@@ -25,9 +27,11 @@ import {
 import { useTranslation } from '@/i18n';
 import { useSettings } from '@/settings/SettingsContext';
 import { useTheme } from '@/theme';
-import { playAlertSound } from '@/utils/alertSounds';
+import { playAlertSound, playClickSound } from '@/utils/alertSounds';
 import { confirmAction, showMessage } from '@/utils/confirm';
 import { getAvatarById } from '@/utils/profileOptions';
+import { CardioInsightsModal, type CardioInsightsData } from '@/components/CardioInsightsModal';
+import { scheduleDailyWorkoutReminder, scheduleRelativeReminder } from '@/utils/notifications';
 
 type CardioActivity = 'jogging' | 'cycling' | 'jumprope' | 'hiit';
 
@@ -46,6 +50,118 @@ const ACTIVITIES: ActivityMeta[] = [
   { id: 'hiit', label: 'HIIT Sprint', iconName: 'flash-outline', speedKmH: 14.0, calMultiplier: 95 },
 ];
 
+export type BeatChallengeType = 'sprint' | 'jumprope' | 'burpees' | 'plank' | 'cycling' | 'shadowboxing';
+
+export interface ChallengePreset {
+  id: string;
+  label: string;
+  target: number;
+  timeLimitSec: number;
+  coins: number;
+  exp: number;
+}
+
+export interface BeatChallengeMeta {
+  id: BeatChallengeType;
+  label: string;
+  iconName: keyof typeof Ionicons.glyphMap;
+  unit: string;
+  defaultTarget: number;
+  defaultTimeLimitSec: number;
+  isRepBased: boolean;
+  speedKmH?: number;
+  presets: ChallengePreset[];
+}
+
+export const BEAT_CHALLENGES: BeatChallengeMeta[] = [
+  {
+    id: 'sprint',
+    label: 'Speed Sprint',
+    iconName: 'flash',
+    unit: 'KM',
+    defaultTarget: 1.0,
+    defaultTimeLimitSec: 300,
+    isRepBased: false,
+    speedKmH: 14.5,
+    presets: [
+      { id: 'sprint_1k', label: '1.0 KM (5 Min)', target: 1.0, timeLimitSec: 300, coins: 20, exp: 40 },
+      { id: 'sprint_3k', label: '3.0 KM (12 Min)', target: 3.0, timeLimitSec: 720, coins: 35, exp: 80 },
+      { id: 'sprint_5k', label: '5.0 KM (22 Min)', target: 5.0, timeLimitSec: 1320, coins: 60, exp: 140 },
+    ],
+  },
+  {
+    id: 'jumprope',
+    label: 'Jump Rope Blitz',
+    iconName: 'pulse',
+    unit: 'SKIPS',
+    defaultTarget: 300,
+    defaultTimeLimitSec: 180,
+    isRepBased: true,
+    presets: [
+      { id: 'rope_300', label: '300 Skips (3 Min)', target: 300, timeLimitSec: 180, coins: 15, exp: 35 },
+      { id: 'rope_500', label: '500 Skips (5 Min)', target: 500, timeLimitSec: 300, coins: 25, exp: 60 },
+      { id: 'rope_1000', label: '1,000 Skips (9 Min)', target: 1000, timeLimitSec: 540, coins: 50, exp: 120 },
+    ],
+  },
+  {
+    id: 'burpees',
+    label: 'Burpee Burner',
+    iconName: 'flame',
+    unit: 'REPS',
+    defaultTarget: 25,
+    defaultTimeLimitSec: 180,
+    isRepBased: true,
+    presets: [
+      { id: 'burpee_25', label: '25 Reps (3 Min)', target: 25, timeLimitSec: 180, coins: 20, exp: 45 },
+      { id: 'burpee_50', label: '50 Reps (6 Min)', target: 50, timeLimitSec: 360, coins: 40, exp: 90 },
+      { id: 'burpee_75', label: '75 Reps (10 Min)', target: 75, timeLimitSec: 600, coins: 60, exp: 150 },
+    ],
+  },
+  {
+    id: 'plank',
+    label: 'Plank Fortress',
+    iconName: 'shield',
+    unit: 'SEC',
+    defaultTarget: 60,
+    defaultTimeLimitSec: 60,
+    isRepBased: false,
+    presets: [
+      { id: 'plank_60', label: '60s Hold (1 Min)', target: 60, timeLimitSec: 60, coins: 15, exp: 30 },
+      { id: 'plank_120', label: '120s Hold (2 Min)', target: 120, timeLimitSec: 120, coins: 30, exp: 70 },
+      { id: 'plank_180', label: '180s Hold (3 Min)', target: 180, timeLimitSec: 180, coins: 50, exp: 110 },
+    ],
+  },
+  {
+    id: 'cycling',
+    label: 'Cycling Velocity',
+    iconName: 'bicycle',
+    unit: 'KM',
+    defaultTarget: 3.0,
+    defaultTimeLimitSec: 360,
+    isRepBased: false,
+    speedKmH: 26.0,
+    presets: [
+      { id: 'cycle_3k', label: '3.0 KM (6 Min)', target: 3.0, timeLimitSec: 360, coins: 20, exp: 40 },
+      { id: 'cycle_5k', label: '5.0 KM (10 Min)', target: 5.0, timeLimitSec: 600, coins: 35, exp: 75 },
+      { id: 'cycle_10k', label: '10.0 KM (18 Min)', target: 10.0, timeLimitSec: 1080, coins: 55, exp: 130 },
+    ],
+  },
+  {
+    id: 'shadowboxing',
+    label: 'Shadow Boxing',
+    iconName: 'fitness',
+    unit: 'ROUNDS',
+    defaultTarget: 3,
+    defaultTimeLimitSec: 540,
+    isRepBased: true,
+    presets: [
+      { id: 'box_2r', label: '2 Rounds (6 Min)', target: 2, timeLimitSec: 360, coins: 25, exp: 50 },
+      { id: 'box_3r', label: '3 Rounds (9 Min)', target: 3, timeLimitSec: 540, coins: 40, exp: 85 },
+      { id: 'box_5r', label: '5 Rounds (15 Min)', target: 5, timeLimitSec: 900, coins: 70, exp: 160 },
+    ],
+  },
+];
+
 export default function CardioScreen() {
   const theme = useTheme();
   const router = useRouter();
@@ -62,26 +178,42 @@ export default function CardioScreen() {
   const [distanceKm, setDistanceKm] = useState(0);
   const [history, setHistory] = useState<CardioLog[]>([]);
 
-  // HIIT Challenge State ("Beat the Clock")
-  const [targetKmInput, setTargetKmInput] = useState('3');
-  const [timeLimitMinInput, setTimeLimitMinInput] = useState('10');
+  // Beat the Clock Challenge State
+  const [selectedChallengeType, setSelectedChallengeType] = useState<BeatChallengeType>('sprint');
+  const [selectedPresetId, setSelectedPresetId] = useState<string>('sprint_1k');
+  const [challengeTargetInput, setChallengeTargetInput] = useState<string>('1.0');
+  const [challengeTimeLimitMinInput, setChallengeTimeLimitMinInput] = useState<string>('5');
   const [challengeActive, setChallengeActive] = useState(false);
-  const [challengeSecondsLeft, setChallengeSecondsLeft] = useState(600);
-  const [challengeTotalSeconds, setChallengeTotalSeconds] = useState(600);
-  const [challengeDistanceKm, setChallengeDistanceKm] = useState(0);
+  const [challengeSecondsLeft, setChallengeSecondsLeft] = useState(300);
+  const [challengeTotalSeconds, setChallengeTotalSeconds] = useState(300);
+  const [challengeCurrentProgress, setChallengeCurrentProgress] = useState(0);
+
+  // Performance Insights Modal State
+  const [insightsModalVisible, setInsightsModalVisible] = useState(false);
+  const [insightsData, setInsightsData] = useState<CardioInsightsData | null>(null);
+
+  // Scheduled Workout Alarm State
+  const [reminderArmed, setReminderArmed] = useState(false);
 
   const challengeStateRef = useRef({
     active: false,
-    secondsLeft: 600,
-    totalSeconds: 600,
-    distanceKm: 0,
-    targetKm: 3,
+    secondsLeft: 300,
+    totalSeconds: 300,
+    currentProgress: 0,
+    target: 1.0,
+    type: 'sprint' as BeatChallengeType,
+    isRepBased: false,
+    speedKmH: 14.5,
   });
 
   const currentAvatar = useMemo(() => getAvatarById(settings.avatarId), [settings.avatarId]);
   const activeActivityMeta = useMemo(
     () => ACTIVITIES.find((a) => a.id === selectedActivity) || ACTIVITIES[0],
     [selectedActivity]
+  );
+  const activeChallengeMeta = useMemo(
+    () => BEAT_CHALLENGES.find((c) => c.id === selectedChallengeType) || BEAT_CHALLENGES[0],
+    [selectedChallengeType]
   );
 
   // Radar echo pulse animations for Satellite Standby & GPS
@@ -203,46 +335,99 @@ export default function CardioScreen() {
   }, []);
 
   const finishChallengeSuccess = useCallback(
-    async (finalDist: number, totalSec: number, secLeft: number, tgtKm: number) => {
+    async (finalProgress: number, totalSec: number, secLeft: number, tgt: number) => {
       challengeStateRef.current.active = false;
       setChallengeActive(false);
-      playAlertSound('chime');
+
+      // Professional audio sequence: Ringing gym bell then reward chime!
+      playAlertSound('bell');
+      setTimeout(() => {
+        playAlertSound('chime');
+      }, 350);
+
       const elapsedSec = Math.max(1, totalSec - secLeft);
-      const cals = Math.round(finalDist * 90);
+      const activeMeta = BEAT_CHALLENGES.find((c) => c.id === selectedChallengeType) || BEAT_CHALLENGES[0];
+      const activePreset = activeMeta.presets.find((p) => p.id === selectedPresetId) || activeMeta.presets[0];
+
+      const cals = Math.round(
+        activeMeta.unit === 'KM'
+          ? finalProgress * 75
+          : activeMeta.unit === 'SKIPS'
+          ? finalProgress * 0.16
+          : finalProgress * 1.5 + (elapsedSec / 60) * 9
+      );
+
+      const distanceToLog = activeMeta.unit === 'KM' ? finalProgress : +(finalProgress / 100).toFixed(2);
+
       try {
-        await saveCardioSession(elapsedSec, finalDist, cals);
+        await saveCardioSession(elapsedSec, distanceToLog, cals);
         await loadData();
       } catch (e) {
         console.warn('Failed to save challenge session:', e);
       }
-      showMessage(
-        'CHALLENGE CONQUERED!',
-        `Target: ${tgtKm} KM reached in ${formatStopwatch(elapsedSec)}!\n\n+25 Hunter Coins awarded\nStamina: +15 EXP`
-      );
+
+      setInsightsData({
+        challengeTitle: `${activeMeta.label} Challenge`,
+        isSuccess: true,
+        timeElapsedSec: elapsedSec,
+        timeLimitSec: totalSec,
+        outputValue: finalProgress,
+        outputUnit: activeMeta.unit,
+        targetValue: tgt,
+        caloriesBurned: cals,
+        coinsEarned: activePreset?.coins ?? 25,
+        expEarned: activePreset?.exp ?? 50,
+        aiInsightTip: `Phenomenal threshold pacing! Completing ${tgt} ${activeMeta.unit} in ${formatStopwatch(elapsedSec)} reinforces neurological muscular endurance and increases VO2 max oxygen delivery by 3.8%.`,
+      });
+      setInsightsModalVisible(true);
     },
-    [formatStopwatch, loadData]
+    [formatStopwatch, loadData, selectedChallengeType, selectedPresetId]
   );
 
   const finishChallengeTimeout = useCallback(
-    async (finalDist: number, totalSec: number) => {
+    async (finalProgress: number, totalSec: number, tgt: number) => {
       challengeStateRef.current.active = false;
       setChallengeActive(false);
-      playAlertSound('beep');
-      showMessage(
-        "TIME'S UP!",
-        `You covered ${finalDist.toFixed(2)} KM. Stay consistent and overcome the limits next time!`
+
+      // Referee whistle for time's up
+      playAlertSound('whistle');
+
+      const activeMeta = BEAT_CHALLENGES.find((c) => c.id === selectedChallengeType) || BEAT_CHALLENGES[0];
+      const cals = Math.round(
+        activeMeta.unit === 'KM'
+          ? finalProgress * 65
+          : activeMeta.unit === 'SKIPS'
+          ? finalProgress * 0.14
+          : finalProgress * 1.2 + (totalSec / 60) * 8
       );
-      if (finalDist > 0.05) {
-        const cals = Math.round(finalDist * 80);
+
+      const distanceToLog = activeMeta.unit === 'KM' ? finalProgress : +(finalProgress / 100).toFixed(2);
+
+      if (finalProgress > 0) {
         try {
-          await saveCardioSession(totalSec, finalDist, cals);
+          await saveCardioSession(totalSec, distanceToLog, cals);
           await loadData();
         } catch (e) {
           console.warn('Failed to save challenge session:', e);
         }
       }
+
+      setInsightsData({
+        challengeTitle: `${activeMeta.label} Challenge`,
+        isSuccess: false,
+        timeElapsedSec: totalSec,
+        timeLimitSec: totalSec,
+        outputValue: finalProgress,
+        outputUnit: activeMeta.unit,
+        targetValue: tgt,
+        caloriesBurned: cals,
+        coinsEarned: 5,
+        expEarned: 15,
+        aiInsightTip: `High exertion detected. You sustained ${finalProgress.toFixed(activeMeta.unit === 'KM' ? 2 : 0)} ${activeMeta.unit} before time expired. Cellular ATP-CP recovery protocol recommended with 500ml hydration.`,
+      });
+      setInsightsModalVisible(true);
     },
-    [loadData]
+    [loadData, selectedChallengeType]
   );
 
   // Main Protocol Timer
@@ -260,7 +445,7 @@ export default function CardioScreen() {
     };
   }, [isActive, activeActivityMeta]);
 
-  // Challenge Timer
+  // Beat the Clock Challenge Timer with Audio Ticks
   useEffect(() => {
     if (!challengeActive) return;
 
@@ -269,21 +454,32 @@ export default function CardioScreen() {
       if (!state.active) return;
 
       const newSecondsLeft = state.secondsLeft - 1;
-      const ratePerSec = 13.5 / 3600;
-      const newDistance = +(state.distanceKm + ratePerSec).toFixed(3);
+
+      // Professional countdown beeps during the final 5 seconds!
+      if (newSecondsLeft <= 5 && newSecondsLeft > 0) {
+        playAlertSound('beep');
+      }
+
+      let newProgress = state.currentProgress;
+      if (state.type === 'plank') {
+        newProgress = state.currentProgress + 1;
+      } else if (!state.isRepBased) {
+        const ratePerSec = (state.speedKmH || 14.5) / 3600;
+        newProgress = +(state.currentProgress + ratePerSec).toFixed(3);
+      }
 
       state.secondsLeft = Math.max(0, newSecondsLeft);
-      state.distanceKm = newDistance;
+      state.currentProgress = newProgress;
 
       setChallengeSecondsLeft(state.secondsLeft);
-      setChallengeDistanceKm(newDistance);
+      setChallengeCurrentProgress(newProgress);
 
-      if (newDistance >= state.targetKm) {
+      if (newProgress >= state.target) {
         clearInterval(interval);
-        void finishChallengeSuccess(newDistance, state.totalSeconds, state.secondsLeft, state.targetKm);
+        void finishChallengeSuccess(newProgress, state.totalSeconds, state.secondsLeft, state.target);
       } else if (newSecondsLeft <= 0) {
         clearInterval(interval);
-        void finishChallengeTimeout(newDistance, state.totalSeconds);
+        void finishChallengeTimeout(newProgress, state.totalSeconds, state.target);
       }
     }, 1000);
 
@@ -308,6 +504,7 @@ export default function CardioScreen() {
 
   // Main protocol actions
   const handleToggleProtocol = () => {
+    playClickSound();
     setIsActive(!isActive);
   };
 
@@ -352,36 +549,79 @@ export default function CardioScreen() {
   };
 
   const handleResetProtocol = () => {
+    playClickSound();
     setIsActive(false);
     setSeconds(0);
     setDistanceKm(0);
   };
 
-  // Challenge actions
+  // Switch Challenge Category
+  const handleSelectChallengeType = (typeId: BeatChallengeType) => {
+    if (challengeActive) return;
+    playClickSound();
+    setSelectedChallengeType(typeId);
+    const meta = BEAT_CHALLENGES.find((c) => c.id === typeId) || BEAT_CHALLENGES[0];
+    const firstPreset = meta.presets[0];
+    setSelectedPresetId(firstPreset.id);
+    setChallengeTargetInput(String(firstPreset.target));
+    setChallengeTimeLimitMinInput(String(Math.round(firstPreset.timeLimitSec / 60)));
+  };
+
+  // Select Quick Preset
+  const handleSelectPreset = (preset: ChallengePreset) => {
+    if (challengeActive) return;
+    playClickSound();
+    setSelectedPresetId(preset.id);
+    setChallengeTargetInput(String(preset.target));
+    setChallengeTimeLimitMinInput(String(Math.round(preset.timeLimitSec / 60)));
+  };
+
+  // Add Reps for Rep-Based Challenges (Jump Rope, Burpees, Boxing)
+  const handleAddReps = (count: number) => {
+    if (!challengeActive) return;
+    playClickSound();
+    const state = challengeStateRef.current;
+    const newProgress = state.currentProgress + count;
+    state.currentProgress = newProgress;
+    setChallengeCurrentProgress(newProgress);
+
+    if (newProgress >= state.target) {
+      void finishChallengeSuccess(newProgress, state.totalSeconds, state.secondsLeft, state.target);
+    }
+  };
+
+  // Start Challenge
   const handleStartChallenge = () => {
-    const target = parseFloat(targetKmInput);
-    const limitMin = parseFloat(timeLimitMinInput);
+    const meta = BEAT_CHALLENGES.find((c) => c.id === selectedChallengeType) || BEAT_CHALLENGES[0];
+    const target = parseFloat(challengeTargetInput);
+    const limitMin = parseFloat(challengeTimeLimitMinInput);
 
     if (!target || isNaN(target) || target <= 0 || !limitMin || isNaN(limitMin) || limitMin <= 0) {
-      showMessage('Invalid Target', 'Please enter a valid target distance (KM) and time limit (MIN).');
+      showMessage('Invalid Target', `Please enter a valid target ${meta.unit} and time limit (MIN).`);
       return;
     }
 
+    playAlertSound('digital');
     const totalSec = Math.round(limitMin * 60);
     challengeStateRef.current = {
       active: true,
       secondsLeft: totalSec,
       totalSeconds: totalSec,
-      distanceKm: 0,
-      targetKm: target,
+      currentProgress: 0,
+      target,
+      type: meta.id,
+      isRepBased: meta.isRepBased,
+      speedKmH: meta.speedKmH ?? 14.5,
     };
     setChallengeTotalSeconds(totalSec);
     setChallengeSecondsLeft(totalSec);
-    setChallengeDistanceKm(0);
+    setChallengeCurrentProgress(0);
     setChallengeActive(true);
   };
 
+  // Abort Challenge
   const handleAbortChallenge = () => {
+    playAlertSound('whistle');
     confirmAction(
       'Abort Challenge?',
       'Are you sure you want to cancel this timed challenge?',
@@ -389,9 +629,53 @@ export default function CardioScreen() {
       () => {
         challengeStateRef.current.active = false;
         setChallengeActive(false);
-        setChallengeDistanceKm(0);
+        setChallengeCurrentProgress(0);
       }
     );
+  };
+
+  // Toggle Daily Workout Reminder Alarm
+  const handleToggleDailyReminder = async () => {
+    if (reminderArmed) {
+      setReminderArmed(false);
+      showMessage('Alarm Deactivated', 'Daily workout notification reminders have been cleared.');
+      return;
+    }
+
+    const streak = profile?.streak_days ?? 1;
+    const notifId = await scheduleDailyWorkoutReminder(streak, 8, 0);
+    if (notifId) {
+      setReminderArmed(true);
+      playAlertSound('bell');
+      showMessage(
+        'Daily Workout Alarm Armed! ⏰',
+        `Naka-set na sa 8:00 AM araw-araw!\n\nKahit sarado ang PeakFit app, makakatanggap ka ng push alarm: "⚡ Day ${streak + 1} na pala! Need mo na mag-exercise!"`
+      );
+    } else {
+      showMessage(
+        'Notification Permission',
+        'Please allow notifications in your device settings to receive offline workout reminder alarms.'
+      );
+    }
+  };
+
+  // Test Notification (5s)
+  const handleTestNotification = async () => {
+    playClickSound();
+    const streak = profile?.streak_days ?? 1;
+    const notifId = await scheduleRelativeReminder(
+      5,
+      `⚡ Day ${streak + 1} na pala! Need mo na mag-exercise!`,
+      `PeakFit Protocol: Oras na para sa iyong workout! Protektahan ang iyong Hunter Streak ngayon.`
+    );
+    if (notifId) {
+      showMessage(
+        'Test Alarm Scheduled (5s)',
+        'I-minimize mo ang app ngayon. Makalipas ang 5 segundo, tutunog at lalabas ang notification sa status bar!'
+      );
+    } else {
+      showMessage('Notification Permission', 'Please grant notification permission on your device.');
+    }
   };
 
   const handleDeleteLog = (logId: string) => {
@@ -469,6 +753,7 @@ export default function CardioScreen() {
           </SmoothPressable>
 
           <View style={styles.topHunterActions}>
+            <NotificationBellButton streakDays={profile?.streak_days ?? 4} />
             <SmoothPressable
               onPress={() => router.push('/settings')}
               style={[
@@ -548,15 +833,57 @@ export default function CardioScreen() {
             styles.satelliteCard,
             {
               backgroundColor: theme.card,
-              borderColor: isActive ? theme.tint : theme.borderRose,
-              shadowColor: isActive ? theme.tint : theme.glow,
+              borderColor: isActive ? theme.tint : theme.border,
+              shadowColor: isActive ? theme.tint : '#000000',
+              overflow: 'hidden',
             },
           ]}
         >
+          <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
+            <Defs>
+              <RadialGradient id="cardioSatGlow" cx="50%" cy="22%" rx="70%" ry="70%">
+                <Stop offset="0%" stopColor={isActive ? '#E11D48' : theme.tint} stopOpacity="0.22" />
+                <Stop offset="100%" stopColor={theme.tint} stopOpacity="0" />
+              </RadialGradient>
+            </Defs>
+            <Rect x="0" y="0" width="100%" height="100%" rx="18" fill="url(#cardioSatGlow)" />
+          </Svg>
+
           {/* Status Subtitle: Live, Paused, or Standby */}
-          <Text style={[styles.satelliteStatusText, { color: isActive ? theme.tint : seconds > 0 ? '#FBBF24' : theme.textSecondary }]}>
-            {isActive ? 'GPS TRACKING ACTIVE' : seconds > 0 ? 'SESSION PAUSED' : t('satelliteStandby')}
-          </Text>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+              paddingHorizontal: 12,
+              paddingVertical: 4,
+              borderRadius: 999,
+              backgroundColor: isActive ? 'rgba(225, 29, 72, 0.16)' : `${theme.tint}16`,
+              borderWidth: 1,
+              borderColor: isActive ? '#E11D48' : `${theme.tint}40`,
+              marginBottom: 14,
+            }}
+          >
+            <View
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: 3.5,
+                backgroundColor: isActive ? '#E11D48' : seconds > 0 ? '#FBBF24' : theme.tint,
+              }}
+            />
+            <Text
+              style={[
+                styles.satelliteStatusText,
+                {
+                  color: isActive ? '#FB7185' : seconds > 0 ? '#FBBF24' : theme.tint,
+                  marginBottom: 0,
+                },
+              ]}
+            >
+              {isActive ? 'GPS TRACKING ACTIVE' : seconds > 0 ? 'SESSION PAUSED' : t('satelliteStandby')}
+            </Text>
+          </View>
 
           {/* Radar Ring Visual with Animated Sonar/Echo Concentric Rings */}
           <View style={styles.radarRingContainer}>
@@ -707,79 +1034,106 @@ export default function CardioScreen() {
           </View>
         </View>
 
-        {/* 5. HIIT CHALLENGE: BEAT THE CLOCK */}
-        <View style={[styles.hiitChallengeCard, { backgroundColor: theme.card, borderColor: theme.borderRose }]}>
+        {/* 5. BEAT THE CLOCK: MULTI-EXERCISE TIMED PROTOCOL */}
+        <View style={[styles.hiitChallengeCard, { backgroundColor: theme.card, borderColor: `${theme.tint}45` }]}>
           <View style={styles.hiitTopRow}>
             <View style={{ flex: 1 }}>
               <View style={styles.hiitTagRow}>
                 <Ionicons name="flash" size={14} color={theme.tint} style={{ marginRight: 4 }} />
-                <Text style={[styles.hiitTagText, { color: theme.tint }]}>{t('hiitChallenge')}</Text>
+                <Text style={[styles.hiitTagText, { color: theme.tint }]}>BEAT THE CLOCK PROTOCOL</Text>
               </View>
-              <Text style={[styles.hiitTitle, { color: theme.text }]}>{t('beatTheClock')}</Text>
+              <Text style={[styles.hiitTitle, { color: theme.text }]}>
+                {activeChallengeMeta.label} Challenge
+              </Text>
             </View>
 
             <View style={[styles.coinsBadge, { flexDirection: 'row', alignItems: 'center' }]}>
               <Ionicons name="disc" size={12} color="#FBBF24" style={{ marginRight: 4 }} />
-              <Text style={styles.coinsBadgeText}>25 Coins</Text>
+              <Text style={styles.coinsBadgeText}>+{activeChallengeMeta.presets[0]?.coins ?? 25} Coins</Text>
             </View>
           </View>
 
           <Text style={[styles.hiitSubtitle, { color: theme.textSecondary }]}>
-            {t('beatTheClockSub')}
+            Pumili ng exercise type. Kumpletuhin ang target reps o distansya bago maubos ang countdown timer!
           </Text>
 
-          {/* Quick Target Presets */}
-          {!challengeActive && (
-            <View style={styles.quickPresetRow}>
-              {(['1', '3', '5', '10'] as const).map((dist) => (
+          {/* 5.1. EXERCISE TYPE SELECTOR PILLS */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.challengeTypesScroll}
+          >
+            {BEAT_CHALLENGES.map((ch) => {
+              const isSelected = selectedChallengeType === ch.id;
+              return (
                 <SmoothPressable
-                  key={dist}
-                  onPress={() => setTargetKmInput(dist)}
+                  key={ch.id}
+                  onPress={() => handleSelectChallengeType(ch.id)}
+                  disabled={challengeActive}
                   style={[
-                    styles.quickPresetPill,
+                    styles.challengeTypePill,
                     {
-                      backgroundColor: targetKmInput === dist ? theme.tint : theme.cardSecondary,
-                      borderColor: targetKmInput === dist ? theme.tint : theme.border,
+                      backgroundColor: isSelected ? theme.tint : theme.cardSecondary,
+                      borderColor: isSelected ? theme.tint : theme.border,
+                      opacity: challengeActive && !isSelected ? 0.45 : 1,
                     },
                   ]}
                 >
+                  <Ionicons
+                    name={ch.iconName}
+                    size={14}
+                    color={isSelected ? '#FFFFFF' : theme.textSecondary}
+                    style={{ marginRight: 6 }}
+                  />
                   <Text
                     style={[
-                      styles.quickPresetText,
-                      { color: targetKmInput === dist ? '#FFFFFF' : theme.textSecondary },
+                      styles.challengeTypePillText,
+                      { color: isSelected ? '#FFFFFF' : theme.textSecondary, fontWeight: isSelected ? '700' : '600' },
                     ]}
                   >
-                    {dist} KM
+                    {ch.label}
                   </Text>
                 </SmoothPressable>
-              ))}
+              );
+            })}
+          </ScrollView>
+
+          {/* 5.2. QUICK TARGET PRESETS */}
+          {!challengeActive && (
+            <View style={styles.quickPresetRow}>
+              {activeChallengeMeta.presets.map((preset) => {
+                const isSelected = selectedPresetId === preset.id;
+                return (
+                  <SmoothPressable
+                    key={preset.id}
+                    onPress={() => handleSelectPreset(preset)}
+                    style={[
+                      styles.quickPresetPill,
+                      {
+                        backgroundColor: isSelected ? theme.tint : theme.cardSecondary,
+                        borderColor: isSelected ? theme.tint : theme.border,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.quickPresetText,
+                        { color: isSelected ? '#FFFFFF' : theme.textSecondary },
+                      ]}
+                    >
+                      {preset.label}
+                    </Text>
+                  </SmoothPressable>
+                );
+              })}
             </View>
           )}
 
-          {/* Inputs Row: Target (KM) & Time Limit (MIN) */}
+          {/* 5.3. TARGET & TIME LIMIT INPUTS */}
           <View style={styles.challengeInputsRow}>
             <View style={styles.challengeInputBox}>
-              <Text style={[styles.challengeInputLabel, { color: theme.textSecondary }]}>{t('targetKm')}</Text>
-              <TextInput
-                style={[
-                  styles.challengeInput,
-                  {
-                    backgroundColor: theme.cardSecondary,
-                    borderColor: theme.border,
-                    color: theme.text,
-                  },
-                ]}
-                keyboardType="numeric"
-                value={targetKmInput}
-                onChangeText={setTargetKmInput}
-                editable={!challengeActive}
-                maxLength={4}
-              />
-            </View>
-
-            <View style={styles.challengeInputBox}>
               <Text style={[styles.challengeInputLabel, { color: theme.textSecondary }]}>
-                {t('timeLimitMin')}
+                TARGET ({activeChallengeMeta.unit})
               </Text>
               <TextInput
                 style={[
@@ -791,25 +1145,46 @@ export default function CardioScreen() {
                   },
                 ]}
                 keyboardType="numeric"
-                value={timeLimitMinInput}
-                onChangeText={setTimeLimitMinInput}
+                value={challengeTargetInput}
+                onChangeText={setChallengeTargetInput}
+                editable={!challengeActive}
+                maxLength={5}
+              />
+            </View>
+
+            <View style={styles.challengeInputBox}>
+              <Text style={[styles.challengeInputLabel, { color: theme.textSecondary }]}>
+                TIME LIMIT (MIN)
+              </Text>
+              <TextInput
+                style={[
+                  styles.challengeInput,
+                  {
+                    backgroundColor: theme.cardSecondary,
+                    borderColor: theme.border,
+                    color: theme.text,
+                  },
+                ]}
+                keyboardType="numeric"
+                value={challengeTimeLimitMinInput}
+                onChangeText={setChallengeTimeLimitMinInput}
                 editable={!challengeActive}
                 maxLength={4}
               />
             </View>
           </View>
 
-          {/* Visual Progress Row: Target Progress Meter & Time Left */}
+          {/* 5.4. VISUAL PROGRESS ROW */}
           <View style={styles.challengeGaugesRow}>
             {/* Target Progress Meter */}
             <View style={[styles.challengeGaugeCard, { backgroundColor: theme.cardSecondary, borderColor: theme.border }]}>
               <View style={styles.gaugeCardHeader}>
-                <Text style={[styles.gaugeTitle, { color: theme.textSecondary }]}>{t('targetProgress')}</Text>
-                <View style={[styles.liveDot, { backgroundColor: challengeActive ? '#38BDF8' : theme.textDim }]} />
+                <Text style={[styles.gaugeTitle, { color: theme.textSecondary }]}>OUTPUT PROGRESS</Text>
+                <View style={[styles.liveDot, { backgroundColor: challengeActive ? '#10B981' : theme.textDim }]} />
               </View>
 
               <View style={styles.circularMeterWrapper}>
-                {/* Looping Pulsing Echo Ring for HIIT Challenge */}
+                {/* Looping Pulsing Echo Ring */}
                 <Animated.View
                   pointerEvents="none"
                   style={[
@@ -831,7 +1206,7 @@ export default function CardioScreen() {
                     },
                   ]}
                 />
-                {/* Looping Spinning Ring Arc with dashed borders */}
+                {/* Looping Spinning Ring Arc */}
                 <Animated.View
                   pointerEvents="none"
                   style={[
@@ -850,11 +1225,13 @@ export default function CardioScreen() {
                   ]}
                 />
 
-                <View style={[styles.circularOuterRing, { borderColor: theme.tint }]}>
+                <View style={[styles.circularOuterRing, { borderColor: theme.tint, backgroundColor: `${theme.tint}14` }]}>
                   <Text style={[styles.circularMeterValue, { color: theme.text }]}>
-                    {challengeDistanceKm.toFixed(2)} / {targetKmInput} KM
+                    {challengeCurrentProgress.toFixed(activeChallengeMeta.unit === 'KM' ? 2 : 0)} / {challengeTargetInput}
                   </Text>
-                  <Text style={[styles.circularMeterUnit, { color: theme.textSecondary }]}>{t('targetProgress')}</Text>
+                  <Text style={[styles.circularMeterUnit, { color: theme.tint }]}>
+                    {activeChallengeMeta.unit}
+                  </Text>
                 </View>
               </View>
             </View>
@@ -867,7 +1244,12 @@ export default function CardioScreen() {
               </View>
 
               <View style={styles.timeLeftContainer}>
-                <Text style={[styles.countdownTimeText, { color: theme.text }]}>
+                <Text
+                  style={[
+                    styles.countdownTimeText,
+                    { color: challengeSecondsLeft <= 10 && challengeActive ? '#EF4444' : theme.text },
+                  ]}
+                >
                   {formatStopwatch(challengeSecondsLeft)}
                 </Text>
 
@@ -878,7 +1260,7 @@ export default function CardioScreen() {
                       styles.countdownProgressBarFill,
                       {
                         width: `${Math.max(0, Math.min(100, challengeTimeRatio * 100))}%`,
-                        backgroundColor: challengeSecondsLeft < 60 ? '#EF4444' : theme.tint,
+                        backgroundColor: challengeSecondsLeft < 30 ? '#EF4444' : theme.tint,
                       },
                     ]}
                   />
@@ -887,7 +1269,31 @@ export default function CardioScreen() {
             </View>
           </View>
 
-          {/* Challenge Action Button */}
+          {/* 5.5. TACTILE REP INCREMENT CONTROLS FOR REP-BASED EXERCISES */}
+          {activeChallengeMeta.isRepBased && challengeActive && (
+            <View style={styles.repCounterControlsRow}>
+              <SmoothPressable
+                onPress={() => handleAddReps(1)}
+                style={[styles.repIncrementBtn, { backgroundColor: theme.cardSecondary, borderColor: theme.border }]}
+              >
+                <Text style={[styles.repIncrementBtnText, { color: theme.text }]}>+1 {activeChallengeMeta.unit === 'SKIPS' ? 'SKIP' : 'REP'}</Text>
+              </SmoothPressable>
+              <SmoothPressable
+                onPress={() => handleAddReps(5)}
+                style={[styles.repIncrementBtn, { backgroundColor: theme.cardSecondary, borderColor: theme.border }]}
+              >
+                <Text style={[styles.repIncrementBtnText, { color: theme.text }]}>+5</Text>
+              </SmoothPressable>
+              <SmoothPressable
+                onPress={() => handleAddReps(10)}
+                style={[styles.repIncrementBtn, { backgroundColor: `${theme.tint}22`, borderColor: theme.tint }]}
+              >
+                <Text style={[styles.repIncrementBtnText, { color: theme.tint }]}>+10</Text>
+              </SmoothPressable>
+            </View>
+          )}
+
+          {/* 5.6. CHALLENGE ACTION BUTTONS */}
           {challengeActive ? (
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
               <SmoothPressable
@@ -899,15 +1305,15 @@ export default function CardioScreen() {
               <SmoothPressable
                 onPress={() =>
                   finishChallengeSuccess(
-                    challengeDistanceKm,
+                    challengeCurrentProgress,
                     challengeTotalSeconds,
                     challengeSecondsLeft,
-                    parseFloat(targetKmInput) || 3
+                    parseFloat(challengeTargetInput) || 1
                   )
                 }
                 style={[styles.challengeActionBtn, { flex: 1, backgroundColor: '#10B981' }]}
               >
-                <Text style={styles.challengeActionBtnText}>{t('done')}</Text>
+                <Text style={styles.challengeActionBtnText}>Conquered! Done ✓</Text>
               </SmoothPressable>
             </View>
           ) : (
@@ -915,9 +1321,72 @@ export default function CardioScreen() {
               onPress={handleStartChallenge}
               style={[styles.challengeActionBtn, { backgroundColor: theme.tint, shadowColor: theme.tint, marginTop: 16 }]}
             >
-              <Text style={styles.challengeActionBtnText}>{t('startTimedChallenge')}</Text>
+              <Ionicons name="stopwatch" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+              <Text style={styles.challengeActionBtnText}>Start</Text>
             </SmoothPressable>
           )}
+        </View>
+
+        {/* 5.7. SCHEDULED DAILY WORKOUT ALARM & NOTIFICATION */}
+        <View style={[styles.reminderCard, { backgroundColor: theme.card, borderColor: `${theme.tint}38` }]}>
+          <View style={styles.reminderCardHeader}>
+            <View style={[styles.reminderIconBadge, { backgroundColor: `${theme.tint}18`, borderColor: `${theme.tint}40` }]}>
+              <Ionicons name="alarm" size={20} color={theme.tint} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                <Text style={[styles.reminderTitle, { color: theme.text }]}>
+                  Daily Workout Push Alarm
+                </Text>
+                <View
+                  style={[
+                    styles.alarmStatusBadge,
+                    {
+                      backgroundColor: reminderArmed ? 'rgba(16, 185, 129, 0.16)' : 'rgba(255, 255, 255, 0.08)',
+                      borderColor: reminderArmed ? '#10B981' : theme.border,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.alarmStatusText, { color: reminderArmed ? '#10B981' : theme.textSecondary }]}>
+                    {reminderArmed ? 'ARMED' : 'OFFLINE'}
+                  </Text>
+                </View>
+              </View>
+              <Text style={[styles.reminderSub, { color: theme.textSecondary }]}>
+                {reminderArmed
+                  ? `Active alarm: "⚡ Day ${(profile?.streak_days ?? 1) + 1} na pala! Need mo na mag-exercise!" scheduled at 8:00 AM daily.`
+                  : 'Makakatanggap ka ng push alarm kahit sarado ang app kapag oras na mag-exercise para maprotektahan ang streak.'}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.reminderActionsRow}>
+            <SmoothPressable
+              onPress={handleToggleDailyReminder}
+              style={[
+                styles.reminderActionBtn,
+                {
+                  backgroundColor: reminderArmed ? '#10B981' : theme.tint,
+                },
+              ]}
+            >
+              <Ionicons name={reminderArmed ? 'checkmark-circle' : 'notifications'} size={15} color="#FFFFFF" />
+              <Text style={styles.reminderActionBtnText}>
+                {reminderArmed ? 'Alarm Active (8:00 AM Daily)' : 'Arm Daily 8:00 AM Alarm'}
+              </Text>
+            </SmoothPressable>
+
+            <SmoothPressable
+              onPress={handleTestNotification}
+              style={[
+                styles.reminderTestBtn,
+                { backgroundColor: theme.cardSecondary, borderColor: theme.border },
+              ]}
+            >
+              <Ionicons name="timer-outline" size={15} color={theme.textSecondary} />
+              <Text style={[styles.reminderTestBtnText, { color: theme.text }]}>Test Alarm (5s)</Text>
+            </SmoothPressable>
+          </View>
         </View>
 
         {/* 6. CARDIO LOG HISTORY */}
@@ -989,6 +1458,12 @@ export default function CardioScreen() {
         onSave={() => {
           void loadData();
         }}
+      />
+
+      <CardioInsightsModal
+        visible={insightsModalVisible}
+        data={insightsData}
+        onClose={() => setInsightsModalVisible(false)}
       />
     </View>
   );
@@ -1288,8 +1763,115 @@ const styles = StyleSheet.create({
   },
   quickPresetRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
     marginBottom: 12,
+  },
+  challengeTypesScroll: {
+    gap: 8,
+    paddingBottom: 12,
+  },
+  challengeTypePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  challengeTypePillText: {
+    fontSize: 12.5,
+  },
+  repCounterControlsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+  },
+  repIncrementBtn: {
+    flex: 1,
+    height: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  repIncrementBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  reminderCard: {
+    borderRadius: 18,
+    borderWidth: 1.2,
+    padding: 16,
+    gap: 12,
+  },
+  reminderCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  reminderIconBadge: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reminderTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  alarmStatusBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  alarmStatusText: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+  },
+  reminderSub: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  reminderActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 2,
+  },
+  reminderActionBtn: {
+    flex: 1.3,
+    flexDirection: 'row',
+    height: 42,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+  },
+  reminderActionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12.5,
+    fontWeight: '700',
+  },
+  reminderTestBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    height: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+  },
+  reminderTestBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   quickPresetPill: {
     paddingHorizontal: 12,

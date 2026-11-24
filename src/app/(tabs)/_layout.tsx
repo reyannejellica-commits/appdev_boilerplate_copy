@@ -39,28 +39,28 @@ export default function TabLayout() {
           name="index"
           options={{
             title: t('tabHome'),
-            tabBarIcon: tabIcon('home', 'home-outline'),
+            tabBarIcon: tabIcon('barbell', 'barbell-outline'),
           }}
         />
         <Tabs.Screen
           name="program"
           options={{
             title: t('tabProgram'),
-            tabBarIcon: tabIcon('clipboard', 'clipboard-outline'),
+            tabBarIcon: tabIcon('calendar', 'calendar-outline'),
           }}
         />
         <Tabs.Screen
           name="cardio"
           options={{
             title: t('tabCardio'),
-            tabBarIcon: tabIcon('walk', 'walk-outline'),
+            tabBarIcon: tabIcon('pulse', 'pulse-outline'),
           }}
         />
         <Tabs.Screen
           name="stats"
           options={{
             title: t('tabStats'),
-            tabBarIcon: tabIcon('trending-up', 'trending-up-outline'),
+            tabBarIcon: tabIcon('stats-chart', 'stats-chart-outline'),
           }}
         />
         <Tabs.Screen

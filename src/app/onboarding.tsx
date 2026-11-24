@@ -3,49 +3,79 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   BackHandler,
+  Dimensions,
+  Image,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button } from '@/components/Button';
+import Svg, { Defs, LinearGradient, RadialGradient, Rect, Stop } from 'react-native-svg';
+import { MonarchCyberVisual } from '@/components/MonarchCyberVisual';
 import { PreOnboardingSplash } from '@/components/PreOnboardingSplash';
 import { SmoothPressable } from '@/components/SmoothPressable';
 import { getHunterProfile, updateHunterName } from '@/db/hunter';
 import { useTranslation } from '@/i18n';
 import { useSettings } from '@/settings/SettingsContext';
-import { useTheme } from '@/theme';
+import { FONTS, useTheme } from '@/theme';
 
-type IconName = React.ComponentProps<typeof Ionicons>['name'];
+// Distinct fitness equipment background images per slide
+const BG_IMAGES = [
+  require('../../assets/images/gym_dumbbells_dark.jpg'),
+  require('../../assets/images/gym_quests_dark.jpg'),
+  require('../../assets/images/gym_ai_dark.jpg'),
+  require('../../assets/images/gym_awakening_dark.jpg'),
+];
 
-interface Slide {
-  icon: IconName;
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const IS_COMPACT = SCREEN_HEIGHT < 720;
+const HERO_SIZE = IS_COMPACT ? 170 : 204;
+
+interface OnboardingSlide {
   badge: string;
+  category: string;
   title: string;
   body: string;
+  highlights: string[];
 }
 
-const SLIDES: Slide[] = [
+const SLIDES: OnboardingSlide[] = [
   {
-    icon: 'barbell-outline',
     badge: 'PROTOCOL 01',
+    category: 'HYPERTROPHY ENGINE',
     title: 'Push, Pull, Legs (PPL)',
-    body: 'Scientific hypertrophy and strength splits. Track your sets, weights, and reps in real time with progressive overload.',
+    body: 'Scientific hypertrophy and strength splits. Track your sets, weights, and reps in real time with automated progressive overload.',
+    highlights: [
+      '⚡ Progressive Overload',
+      '🎯 1-2 RIR Benchmarks',
+      '⏱️ Smart Rest Timers',
+    ],
   },
   {
-    icon: 'flash-outline',
     badge: 'PROTOCOL 02',
-    title: 'Daily Hunter Quests',
-    body: 'Complete daily push-ups, squats, sit-ups, and cardio. Earn EXP, level up your stats, and maintain your streak.',
+    category: 'DAILY HUNTER QUESTS',
+    title: 'Rank Progression & XP',
+    body: 'Complete daily push-ups, squats, sit-ups, and cardio. Earn EXP, level up your hunter stats, and unlock exclusive cyber titles in the Vault.',
+    highlights: [
+      '⚔️ Calisthenics & Cardio',
+      '🔥 Streak Multipliers',
+      '🪙 Coin Vault Unlocks',
+    ],
   },
   {
-    icon: 'hardware-chip-outline',
     badge: 'PROTOCOL 03',
+    category: 'OFFLINE INTELLIGENCE',
     title: '100% Offline AI Coach',
-    body: 'The System runs entirely on your phone with local Gemma 4 E2B AI or cloud Gemini. Zero cloud tracking, total privacy.',
+    body: 'The System runs entirely on your device with local Gemma 4 E2B AI or cloud Gemini. Zero cloud tracking, instant response, complete privacy.',
+    highlights: [
+      '🔒 100% Private Offline',
+      '🧠 Gemma 4 E2B Local AI',
+      '⚡ Zero Latency Coaching',
+    ],
   },
 ];
 
@@ -55,11 +85,14 @@ export default function OnboardingScreen() {
   const { settings, update } = useSettings();
   const { t } = useTranslation();
 
-  // If already onboarded, jump directly to slides without replaying the splash
+  // If already onboarded, skip splash
   const [isBootDone, setIsBootDone] = useState(Boolean(settings.onboarded));
   const [currentSlide, setCurrentSlide] = useState(0);
   const [nickname, setNickname] = useState(settings.nickname || '');
   const [submitting, setSubmitting] = useState(false);
+
+  const totalSteps = SLIDES.length + 1; // 3 protocol slides + 1 awakening slide
+  const isAwakeningStep = currentSlide === SLIDES.length;
 
   // Hardware Android Back button support
   useEffect(() => {
@@ -76,7 +109,7 @@ export default function OnboardingScreen() {
         }
         return true;
       }
-      return false; // let Android OS exit app on first onboarding slide when not onboarded
+      return false;
     };
 
     const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
@@ -119,250 +152,306 @@ export default function OnboardingScreen() {
     return <PreOnboardingSplash onFinish={() => setIsBootDone(true)} />;
   }
 
-  // 2. SLIDES & HUNTER AWAKENING
-  const isHunterStep = currentSlide === SLIDES.length;
+  // Current active fitness background image per slide
+  const currentBgImage = BG_IMAGES[currentSlide] || BG_IMAGES[0];
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        {/* Top Header Bar with Back navigation & Title */}
-        <View style={styles.topHeaderBar}>
-          {settings.onboarded ? (
-            <SmoothPressable
-              onPress={handleExitToHub}
-              style={styles.headerBackBtn}
-              accessibilityRole="button"
-              accessibilityLabel={t('back')}
-              hitSlop={10}
-            >
-              <Ionicons name="arrow-back" size={20} color={theme.text} />
-              <Text style={[styles.headerBackText, { color: theme.text }]}>
-                {t('back')}
-              </Text>
-            </SmoothPressable>
-          ) : (
-            <View style={{ width: 60 }} />
-          )}
+    <View style={[styles.container, { backgroundColor: '#060409' }]}>
+      {/* 
+        DISTINCT FITNESS EQUIPMENT BACKGROUND PER SLIDE:
+        Tastefully blurred with blurRadius={Platform.OS === 'ios' ? 10 : 6}
+        and dark gradient overlay so text and hero crest pop beautifully.
+      */}
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        <Image
+          key={`bg_${currentSlide}`}
+          source={currentBgImage}
+          style={styles.backgroundImage}
+          resizeMode="cover"
+          blurRadius={Platform.OS === 'ios' ? 10 : 6}
+        />
+        <Svg
+          width="100%"
+          height="100%"
+          viewBox={`0 0 ${SCREEN_WIDTH} ${SCREEN_HEIGHT}`}
+          style={StyleSheet.absoluteFill}
+        >
+          <Defs>
+            <LinearGradient id="gymOverlay" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0%" stopColor="#060409" stopOpacity="0.48" />
+              <Stop offset="28%" stopColor="#060409" stopOpacity="0.32" />
+              <Stop offset="60%" stopColor="#060409" stopOpacity="0.75" />
+              <Stop offset="88%" stopColor="#060409" stopOpacity="0.95" />
+              <Stop offset="100%" stopColor="#060409" stopOpacity="1" />
+            </LinearGradient>
+            <RadialGradient id="heroAuraBack" cx="50%" cy="28%" rx="55%" ry="35%">
+              <Stop offset="0%" stopColor={theme.tint} stopOpacity="0.20" />
+              <Stop offset="55%" stopColor={theme.glow} stopOpacity="0.06" />
+              <Stop offset="100%" stopColor="#060409" stopOpacity="0" />
+            </RadialGradient>
+          </Defs>
+          <Rect x="0" y="0" width={SCREEN_WIDTH} height={SCREEN_HEIGHT} fill="url(#gymOverlay)" />
+          <Rect x="0" y="0" width={SCREEN_WIDTH} height={SCREEN_HEIGHT} fill="url(#heroAuraBack)" />
+        </Svg>
+      </View>
 
-          <Text style={[styles.headerTitle, { color: theme.tint }]} numberOfLines={1}>
-            {t('systemProtocolGuide')}
-          </Text>
+      <SafeAreaView style={styles.flex}>
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          {/* 
+            CLEAN MINIMAL HEADER:
+            - Back button completely removed as requested ("wag lagyan ng back").
+            - No stacked box element on left top side.
+            - Only subtle right action (Skip / Hub).
+          */}
+          <View style={styles.headerBar}>
+            <View style={styles.headerLeftEmpty} />
 
-          {settings.onboarded ? (
-            <SmoothPressable
-              onPress={handleExitToHub}
-              style={styles.headerCloseBtn}
-              accessibilityRole="button"
-              accessibilityLabel={t('close')}
-              hitSlop={10}
-            >
-              <Ionicons name="close" size={20} color={theme.textSecondary} />
-            </SmoothPressable>
-          ) : (
-            <View style={{ width: 60 }} />
-          )}
-        </View>
-
-        <View style={styles.content}>
-          {isHunterStep ? (
-            <View style={styles.slideCard}>
-              <View
-                style={[
-                  styles.iconCircle,
-                  {
-                    backgroundColor: theme.cardSecondary,
-                    borderColor: theme.borderRose,
-                    shadowColor: theme.glow,
-                  },
-                ]}
+            {/* Right Action: Close if onboarded, or subtle Skip */}
+            {settings.onboarded ? (
+              <SmoothPressable
+                onPress={handleExitToHub}
+                style={styles.headerCloseBtn}
+                accessibilityRole="button"
+                accessibilityLabel={t('close')}
+                hitSlop={12}
               >
-                <Ionicons name="person" size={48} color={theme.tint} />
-              </View>
-
-              <View
-                style={[
-                  styles.badge,
-                  {
-                    backgroundColor: theme.cardSecondary,
-                    borderColor: theme.borderRose,
-                  },
-                ]}
+                <Ionicons name="close" size={18} color={theme.textSecondary} />
+              </SmoothPressable>
+            ) : (
+              <SmoothPressable
+                onPress={() => setCurrentSlide(SLIDES.length)}
+                style={styles.skipBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Skip to profile creation"
+                hitSlop={12}
               >
-                <Text style={[styles.badgeText, { color: theme.tint }]}>AWAKENING</Text>
-              </View>
+                <Text style={[styles.skipText, { color: theme.textSecondary }]}>
+                  {currentSlide < SLIDES.length ? 'Skip' : ''}
+                </Text>
+              </SmoothPressable>
+            )}
+          </View>
 
-              <Text style={[styles.slideTitle, { color: theme.text }]}>
-                Identify Yourself, Hunter
-              </Text>
-              <Text style={[styles.slideBody, { color: theme.textSecondary }]}>
-                The System will log your quests, track your attributes, and calibrate your offline AI training protocols.
-              </Text>
-
-              <TextInput
-                accessibilityLabel="Hunter Name"
-                value={nickname}
-                onChangeText={setNickname}
-                placeholder="e.g. John Mark"
-                placeholderTextColor={theme.textDim}
-                autoFocus
-                maxLength={30}
-                returnKeyType="done"
-                onSubmitEditing={() => trimmed && handleFinish()}
-                style={[
-                  styles.input,
-                  {
-                    color: theme.text,
-                    backgroundColor: theme.cardSecondary,
-                    borderColor: theme.borderRose,
-                  },
-                ]}
+          {/* MAIN SLIDE CONTENT */}
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+          >
+            {/* HERO VISUAL: EXACT MONARCH CYBER-DUMBBELL CIRCULAR BADGE ON ALL SLIDES */}
+            <View style={styles.heroWrap}>
+              <MonarchCyberVisual
+                variant="dumbbell"
+                size={HERO_SIZE}
+                showDisc
+                animated
+                idPrefix={`ob_hero_${currentSlide}`}
               />
+            </View>
 
-              <View
-                style={[
-                  styles.rankBox,
-                  {
-                    backgroundColor: theme.cardSecondary,
-                    borderColor: theme.borderRose,
-                  },
-                ]}
-              >
-                <Ionicons name="shield-outline" size={18} color={theme.accentGold} />
-                <Text style={[styles.rankText, { color: theme.textSecondary }]}>
-                  Starting Rank:{' '}
-                  <Text style={{ color: theme.accentGold, fontWeight: '700' }}>
-                    E-Rank Hunter (Lv. 1)
+            {isAwakeningStep ? (
+              /* SLIDE 4: SIMPLE NICKNAME SETUP (Direct, Modern & Apple-Grade) */
+              <View style={styles.cardContainer}>
+                <Text style={[styles.titleText, { color: theme.text, marginTop: 12 }]}>
+                  Set Your Nickname
+                </Text>
+                <Text style={[styles.bodyText, { color: theme.textSecondary }]}>
+                  How would you like to be called in the app?
+                </Text>
+
+                {/* Nickname Input Field */}
+                <View
+                  style={[
+                    styles.inputWrap,
+                    {
+                      backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                      borderColor: theme.border,
+                      marginTop: 20,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="person-outline"
+                    size={20}
+                    color={theme.tint}
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    accessibilityLabel="Nickname"
+                    value={nickname}
+                    onChangeText={setNickname}
+                    placeholder="Enter your nickname..."
+                    placeholderTextColor={theme.textDim}
+                    autoFocus
+                    maxLength={26}
+                    returnKeyType="done"
+                    onSubmitEditing={() => trimmed && handleFinish()}
+                    style={[styles.input, { color: theme.text }]}
+                  />
+                  {trimmed.length > 0 && (
+                    <SmoothPressable
+                      onPress={() => setNickname('')}
+                      hitSlop={8}
+                      style={styles.clearInputBtn}
+                    >
+                      <Ionicons name="close-circle" size={18} color={theme.textDim} />
+                    </SmoothPressable>
+                  )}
+                </View>
+              </View>
+            ) : (
+              /* SLIDES 1, 2, 3: PROTOCOL SHOWCASE */
+              <View style={styles.cardContainer}>
+                {/* Category & Protocol Pill Header */}
+                <View
+                  style={[
+                    styles.categoryPill,
+                    {
+                      backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                      borderColor: theme.borderRose,
+                    },
+                  ]}
+                >
+                  <View
+                    style={[styles.glowingDot, { backgroundColor: theme.tint }]}
+                  />
+                  <Text style={[styles.categoryPillText, { color: theme.tint }]}>
+                    {SLIDES[currentSlide].badge} • {SLIDES[currentSlide].category}
                   </Text>
+                </View>
+
+                {/* Slide Title & Body */}
+                <Text style={[styles.titleText, { color: theme.text }]}>
+                  {SLIDES[currentSlide].title}
                 </Text>
-              </View>
-            </View>
-          ) : (
-            <View style={styles.slideCard}>
-              <View
-                style={[
-                  styles.iconCircle,
-                  {
-                    backgroundColor: theme.cardSecondary,
-                    borderColor: theme.borderRose,
-                    shadowColor: theme.glow,
-                  },
-                ]}
-              >
-                <Ionicons name={SLIDES[currentSlide].icon} size={48} color={theme.tint} />
-              </View>
-
-              <View
-                style={[
-                  styles.badge,
-                  {
-                    backgroundColor: theme.cardSecondary,
-                    borderColor: theme.borderRose,
-                  },
-                ]}
-              >
-                <Text style={[styles.badgeText, { color: theme.accentHighlight }]}>
-                  {SLIDES[currentSlide].badge}
+                <Text style={[styles.bodyText, { color: theme.textSecondary }]}>
+                  {SLIDES[currentSlide].body}
                 </Text>
+
+                {/* Modern Feature Highlights Matrix */}
+                <View style={styles.highlightsContainer}>
+                  {SLIDES[currentSlide].highlights.map((highlight, index) => (
+                    <View
+                      key={index}
+                      style={[
+                        styles.highlightChip,
+                        {
+                          backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                          borderColor: 'rgba(255, 255, 255, 0.12)',
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[styles.highlightChipText, { color: theme.textSecondary }]}
+                      >
+                        {highlight}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
               </View>
+            )}
+          </ScrollView>
 
-              <Text style={[styles.slideTitle, { color: theme.text }]}>
-                {SLIDES[currentSlide].title}
-              </Text>
-              <Text style={[styles.slideBody, { color: theme.textSecondary }]}>
-                {SLIDES[currentSlide].body}
-              </Text>
+          {/* BOTTOM PAGINATION DOTS & PRIMARY ACTION BAR */}
+          <View style={styles.footerContainer}>
+            {/* Minimalist Bottom Capsule Dots */}
+            <View style={styles.dotsRow}>
+              {Array.from({ length: totalSteps }).map((_, idx) => {
+                const isActive = idx === currentSlide;
+                return (
+                  <View
+                    key={idx}
+                    style={[
+                      styles.dot,
+                      {
+                        backgroundColor: isActive
+                          ? theme.tint
+                          : 'rgba(255, 255, 255, 0.18)',
+                        width: isActive ? 24 : 7,
+                        shadowColor: isActive ? theme.glow : undefined,
+                        shadowOpacity: isActive ? 0.75 : 0,
+                        shadowRadius: isActive ? 8 : 0,
+                      },
+                    ]}
+                  />
+                );
+              })}
             </View>
-          )}
-        </View>
 
-        {/* Step Indicator Dots */}
-        <View style={styles.dots}>
-          {[...SLIDES, null].map((_, i) => (
-            <View
-              key={i}
+            {/* Primary Action Button */}
+            <SmoothPressable
+              onPress={() =>
+                isAwakeningStep ? handleFinish() : setCurrentSlide((s) => s + 1)
+              }
+              disabled={submitting}
               style={[
-                styles.dot,
+                styles.primaryBtn,
                 {
-                  backgroundColor: i === currentSlide ? theme.tint : theme.border,
-                  width: i === currentSlide ? 20 : 8,
+                  backgroundColor: theme.buttonPrimary,
+                  borderColor: theme.borderRose,
+                  shadowColor: theme.glow,
                 },
               ]}
-            />
-          ))}
-        </View>
-
-        {/* Footer Navigation */}
-        <View
-          style={[
-            styles.footer,
-            currentSlide === 0 && !settings.onboarded && styles.footerSingle,
-          ]}
-        >
-          {currentSlide > 0 ? (
-            <Button
-              label={t('back')}
-              variant="secondary"
-              onPress={() => setCurrentSlide(currentSlide - 1)}
-            />
-          ) : settings.onboarded ? (
-            <Button
-              label={t('returnToHub')}
-              variant="secondary"
-              onPress={handleExitToHub}
-            />
-          ) : null}
-
-          <Button
-            label={
-              isHunterStep
-                ? settings.onboarded
-                  ? t('returnToHub')
-                  : 'Initiate Protocol'
-                : 'Next'
-            }
-            loading={isHunterStep && submitting}
-            disabled={submitting}
-            style={currentSlide === 0 && !settings.onboarded ? styles.buttonFullWidth : undefined}
-            onPress={() => (isHunterStep ? handleFinish() : setCurrentSlide(currentSlide + 1))}
-          />
-        </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+            >
+              <Text style={[styles.primaryBtnText, { color: theme.buttonPrimaryText }]}>
+                {isAwakeningStep
+                  ? settings.onboarded
+                    ? t('returnToHub')
+                    : 'Initiate Hunter Protocol'
+                  : 'Continue'}
+              </Text>
+              <Ionicons
+                name={isAwakeningStep ? 'flash' : 'arrow-forward'}
+                size={18}
+                color={theme.buttonPrimaryText}
+              />
+            </SmoothPressable>
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  flex: { flex: 1 },
+  container: {
+    flex: 1,
+  },
+  flex: {
+    flex: 1,
+  },
+  backgroundImage: {
+    width: '100%',
+    height: '100%',
+    opacity: 0.55,
+  },
 
-  // Top Header Bar
-  topHeaderBar: {
+  // Minimal Header Bar with NO Back Button and NO stacked artifacts
+  headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 4,
+    minHeight: 44,
   },
-  headerBackBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+  headerLeftEmpty: {
+    width: 44,
+    height: 44,
+  },
+  skipBtn: {
+    paddingHorizontal: 12,
     paddingVertical: 6,
-    paddingHorizontal: 8,
-    borderRadius: 8,
   },
-  headerBackText: {
+  skipText: {
     fontSize: 14,
+    fontFamily: FONTS.semiBold,
     fontWeight: '600',
-  },
-  headerTitle: {
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
   },
   headerCloseBtn: {
     width: 32,
@@ -373,111 +462,148 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // Slides styles
-  content: {
-    flex: 1,
+  // Main Scrollable Content
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 24,
+    paddingVertical: 12,
   },
-  slideCard: {
-    width: '100%',
-    alignItems: 'center',
-    gap: 14,
-  },
-  iconCircle: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    borderWidth: 1.5,
+  heroWrap: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
-    shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 16,
-    shadowOpacity: 0.75,
-    elevation: 6,
-  },
-  badge: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1.2,
-    shadowColor: '#D982A5',
-    shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 6,
-    shadowOpacity: 0.4,
-  },
-  badgeText: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
-  slideTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  slideBody: {
-    fontSize: 15,
-    textAlign: 'center',
-    lineHeight: 22,
-    maxWidth: 320,
-  },
-  input: {
-    alignSelf: 'stretch',
-    borderWidth: 1.2,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    marginTop: 8,
-    shadowColor: '#D982A5',
-    shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 8,
-    shadowOpacity: 0.4,
-  },
-  rankBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1.2,
-    alignSelf: 'stretch',
-    justifyContent: 'center',
-    marginTop: 4,
-    shadowColor: '#D982A5',
-    shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 8,
-    shadowOpacity: 0.4,
-  },
-  rankText: {
-    fontSize: 13,
-  },
-  dots: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 6,
     marginBottom: 20,
   },
-  dot: {
-    height: 8,
-    borderRadius: 4,
-  },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  cardContainer: {
+    width: '100%',
     alignItems: 'center',
+  },
+
+  // Protocol Category Pill
+  categoryPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    marginBottom: 14,
+  },
+  glowingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  categoryPillText: {
+    fontSize: 11,
+    fontFamily: FONTS.bold,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+  },
+
+  // Slide Typography
+  titleText: {
+    fontSize: IS_COMPACT ? 24 : 27,
+    fontFamily: FONTS.bold,
+    fontWeight: '800',
+    textAlign: 'center',
+    letterSpacing: -0.5,
+    marginBottom: 10,
+  },
+  bodyText: {
+    fontSize: 14.5,
+    fontFamily: FONTS.regular,
+    textAlign: 'center',
+    lineHeight: 22,
+    maxWidth: 340,
+    marginBottom: 20,
+  },
+
+  // Highlights Matrix
+  highlightsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+    maxWidth: 340,
+  },
+  highlightChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  highlightChipText: {
+    fontSize: 12,
+    fontFamily: FONTS.medium,
+    fontWeight: '600',
+  },
+
+  // Nickname Input
+  inputWrap: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 14,
+    borderWidth: 1.2,
+    paddingHorizontal: 14,
+    paddingVertical: 2,
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 10,
+    shadowOpacity: 0.45,
+    elevation: 4,
+    marginBottom: 12,
+  },
+  inputIcon: {
+    marginRight: 10,
+  },
+  input: {
+    flex: 1,
+    height: 48,
+    fontSize: 15,
+    fontFamily: FONTS.medium,
+  },
+  clearInputBtn: {
+    padding: 4,
+  },
+
+  // Bottom Pagination Dots & Action Button
+  footerContainer: {
     paddingHorizontal: 24,
     paddingBottom: 24,
+    paddingTop: 8,
+    gap: 16,
   },
-  footerSingle: {
-    justifyContent: 'flex-end',
+  dotsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
   },
-  buttonFullWidth: {
-    flex: 1,
+  dot: {
+    height: 6,
+    borderRadius: 3,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 2,
+  },
+  primaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    height: 54,
+    borderRadius: 999,
+    borderWidth: 1.2,
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 16,
+    shadowOpacity: 0.8,
+    elevation: 8,
+  },
+  primaryBtnText: {
+    fontSize: 16,
+    fontFamily: FONTS.bold,
+    fontWeight: '700',
   },
 });

@@ -9,9 +9,21 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import Svg, {
+  Circle,
+  Defs,
+  LinearGradient,
+  RadialGradient,
+  Rect,
+  Stop,
+} from 'react-native-svg';
 import { ExerciseGuideModal } from '@/components/ExerciseGuideModal';
+import { NotificationBellButton } from '@/components/NotificationModal';
 import { PrimeAwakeningModal } from '@/components/PrimeAwakeningModal';
+import { RankUnlockVaultModal } from '@/components/RankUnlockVaultModal';
 import { SmoothPressable } from '@/components/SmoothPressable';
+import { WeekCalendarStrip } from '@/components/WeekCalendarStrip';
+import { WorkoutCalendarModal } from '@/components/WorkoutCalendarModal';
 import {
   addHunterExp,
   getHunterProfile,
@@ -21,6 +33,7 @@ import {
 import { getProgramById, type ProgramDay } from '@/db/programs';
 import {
   getSplitSets,
+  getWorkoutHistory,
   toggleSetCompletion,
   updateSetValues,
   WORKOUT_SPLITS,
@@ -45,6 +58,29 @@ export default function HomeScreen() {
   const [protocolsMap, setProtocolsMap] = useState<Record<string, ExerciseSet[]>>({});
   const [guideExercise, setGuideExercise] = useState<string | null>(null);
   const [awakeningOpen, setAwakeningOpen] = useState<boolean>(false);
+  const [vaultOpen, setVaultOpen] = useState<boolean>(false);
+  const [calendarOpen, setCalendarOpen] = useState<boolean>(false);
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string>(() => getTodayDateString());
+  const [completedWorkoutDates, setCompletedWorkoutDates] = useState<Set<string>>(new Set());
+
+  // Fetch recent completed workout dates for the calendar
+  useEffect(() => {
+    let isMounted = true;
+    getWorkoutHistory(35)
+      .then((history) => {
+        if (isMounted) {
+          const set = new Set<string>();
+          for (const h of history) {
+            if (h.completedSets > 0) set.add(h.date);
+          }
+          setCompletedWorkoutDates(set);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Active workout program selected by user in the Program tab
   const currentProgram = useMemo(() => {
@@ -224,12 +260,26 @@ export default function HomeScreen() {
   // Save & Finish Workout
   const handleSaveAndFinish = async () => {
     playAlertSound(settings.timerSoundType || 'bell');
-    await addHunterExp(50);
+    const expResult = await addHunterExp(50);
     await loadProfile();
-    showMessage(
-      'WORKOUT SAVED!',
-      `Hunter ${settings.nickname || 'Hunter'}, your training data for ${activeDay.name} is safely stored offline.\n\nCompleted: ${completedSetsCount} / ${totalSetsCount} Sets (${completionPercentage}%).\n+50 EXP Bonus Awarded!`
-    );
+    if (expResult.rankAscended) {
+      playAlertSound('bell');
+      showMessage(
+        'RANK ASCENDED!',
+        `Congratulations! You climbed the Player Hierarchy and reached ${expResult.newRank.toUpperCase()} (Level ${expResult.newLevel})!`
+      );
+    } else if (expResult.leveledUp) {
+      playAlertSound('bell');
+      showMessage(
+        'LEVEL UP!',
+        `Level Up! You reached Hunter Level ${expResult.newLevel}!`
+      );
+    } else {
+      showMessage(
+        'WORKOUT SAVED!',
+        `Hunter ${settings.nickname || hunter?.hunter_name || 'Hunter'}, your training data for ${activeDay.name} is safely stored offline.\n\nCompleted: ${completedSetsCount} / ${totalSetsCount} Sets (${completionPercentage}%).\n+50 EXP Bonus Awarded!`
+      );
+    }
   };
 
   return (
@@ -240,22 +290,14 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* 1. TOP HUNTER BAR (Profile tap opens Prime Awakening) */}
+        {/* 1. TOP HUNTER BAR (Avatar tap opens Profile, Rank tap opens Hierarchy) */}
         <View style={styles.topHunterBar}>
-          <SmoothPressable
-            onPress={() => setAwakeningOpen(true)}
-            style={styles.topHunterLeft}
-            accessibilityRole="button"
-            accessibilityLabel="Open Prime Awakening Profile"
-          >
-            <View
-              style={[
-                styles.topAvatarWrapper,
-                {
-                  borderColor: `${theme.tint}45`,
-                  backgroundColor: `${theme.tint}12`,
-                },
-              ]}
+          <View style={styles.topHunterLeft}>
+            <SmoothPressable
+              onPress={() => setAwakeningOpen(true)}
+              style={styles.topAvatarWrapper}
+              accessibilityRole="button"
+              accessibilityLabel="Open Prime Awakening Profile"
             >
               <View
                 style={[
@@ -265,23 +307,60 @@ export default function HomeScreen() {
               >
                 <Image source={currentAvatar.image} style={styles.topAvatarImg} resizeMode="cover" />
               </View>
-            </View>
-            <View style={styles.topHunterInfo}>
+              <View style={[styles.onlineDot, { backgroundColor: theme.success }]} />
+            </SmoothPressable>
+
+            <SmoothPressable
+              onPress={() => setVaultOpen(true)}
+              style={styles.topHunterInfo}
+              accessibilityRole="button"
+              accessibilityLabel="Open Player Hierarchy & Rank Vault"
+            >
               <View style={styles.topNameRow}>
                 <Text style={[styles.topHunterName, { color: theme.text }]} numberOfLines={1}>
-                  {settings.nickname || 'John Mark Dalumpienes'}
+                  {settings.nickname || hunter?.hunter_name || 'Hunter'}
                 </Text>
                 <View style={[styles.rankBadge, { backgroundColor: theme.tint }]}>
-                  <Text style={styles.rankBadgeText}>E-RANK</Text>
+                  <Text style={styles.rankBadgeText}>
+                    {(hunter?.rank || 'E-Rank').toUpperCase()}
+                  </Text>
                 </View>
               </View>
-              <Text style={[styles.topQuestSubtitle, { color: theme.textSecondary }]}>
-                {t('questSubtitle')}
-              </Text>
-            </View>
-          </SmoothPressable>
+              <View style={styles.levelSubRow}>
+                <Text style={[styles.levelBadgeText, { color: theme.tint }]}>
+                  LV. {hunter?.level ?? 1}
+                </Text>
+                <View
+                  style={[
+                    styles.miniExpTrack,
+                    { backgroundColor: theme.cardSecondary },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.miniExpFill,
+                      {
+                        backgroundColor: theme.tint,
+                        width: `${Math.min(
+                          100,
+                          Math.round(((hunter?.exp ?? 0) / (hunter?.max_exp ?? 100)) * 100)
+                        )}%`,
+                      },
+                    ]}
+                  />
+                </View>
+                <Text style={[styles.topQuestSubtitle, { color: theme.textSecondary }]}>
+                  {hunter?.exp ?? 0}/{hunter?.max_exp ?? 100} XP
+                </Text>
+              </View>
+            </SmoothPressable>
+          </View>
 
           <View style={styles.topHunterActions}>
+            <NotificationBellButton
+              streakDays={hunter?.streak_days ?? 4}
+              completionPercent={completionPercentage}
+            />
             <SmoothPressable
               onPress={() => router.push('/settings')}
               style={[
@@ -297,66 +376,182 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* 2. DAILY PEAK QUEST HERO CARD */}
+        {/* 1.5. MODERN WEEK CALENDAR STRIP */}
+        <WeekCalendarStrip
+          selectedDateStr={selectedCalendarDate}
+          onSelectDate={setSelectedCalendarDate}
+          onOpenFullCalendar={() => setCalendarOpen(true)}
+          completedDates={completedWorkoutDates}
+        />
+
+        {/* 2. DAILY PEAK QUEST HERO CARD (Rich Tactical Banner with SVG Glow & Live Telemetry) */}
         <View
           style={[
             styles.dailyQuestCard,
-            { backgroundColor: theme.card, borderColor: theme.borderRose },
+            {
+              backgroundColor: theme.card,
+              borderColor: `${theme.tint}42`,
+              shadowColor: theme.glow,
+            },
           ]}
         >
+          {/* Ambient SVG Gradient Backdrop */}
+          <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
+            <Defs>
+              <RadialGradient id="questHeroGlow" cx="15%" cy="20%" rx="75%" ry="85%">
+                <Stop offset="0%" stopColor={theme.tint} stopOpacity="0.24" />
+                <Stop offset="55%" stopColor={theme.tint} stopOpacity="0.06" />
+                <Stop offset="100%" stopColor={theme.tint} stopOpacity="0" />
+              </RadialGradient>
+            </Defs>
+            <Rect x="0" y="0" width="100%" height="100%" rx="20" fill="url(#questHeroGlow)" />
+          </Svg>
+
+          {/* Top Quest Header & EXP Reward Pill */}
+          <View style={styles.questCardTopHeader}>
+            <View style={styles.questTagPill}>
+              <Ionicons name="sparkles" size={12} color={theme.tint} />
+              <Text style={[styles.dailyQuestTag, { color: theme.tint }]}>
+                {t('dailyPeakQuest')}
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.questRewardBadge,
+                {
+                  backgroundColor: `${theme.tint}1E`,
+                  borderColor: `${theme.tint}50`,
+                },
+              ]}
+            >
+              <Ionicons name="trophy" size={11} color={theme.tint} />
+              <Text style={[styles.questRewardText, { color: theme.tint }]}>
+                +100 EXP BONUS
+              </Text>
+            </View>
+          </View>
+
+          {/* Middle Row: Tactical Circular Progress Emblem + Motivational Quote */}
           <View style={styles.dailyQuestRow}>
             <View
               style={[
-                styles.dailyQuestAvatarWrap,
-                { borderColor: theme.tint, shadowColor: theme.glow },
+                styles.questEmblemBox,
+                {
+                  backgroundColor: `${theme.tint}16`,
+                  borderColor: `${theme.tint}45`,
+                },
               ]}
             >
-              <Image
-                source={currentAvatar.image}
-                style={styles.dailyQuestAvatarImg}
-                resizeMode="cover"
-              />
-            </View>
-            <View style={styles.dailyQuestContent}>
-              <View style={styles.dailyQuestTagRow}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <Ionicons name="flash-outline" size={13} color={theme.accentAmber} />
-                  <Text style={[styles.dailyQuestTag, { color: theme.accentAmber }]}>
-                    {t('dailyPeakQuest')}
-                  </Text>
-                </View>
+              <Svg width={54} height={54} viewBox="0 0 54 54" style={{ transform: [{ rotate: '-90deg' }] }}>
+                <Circle
+                  cx="27"
+                  cy="27"
+                  r="22"
+                  stroke="rgba(255,255,255,0.10)"
+                  strokeWidth="3.5"
+                  fill="none"
+                />
+                <Circle
+                  cx="27"
+                  cy="27"
+                  r="22"
+                  stroke={theme.tint}
+                  strokeWidth="3.5"
+                  fill="none"
+                  strokeDasharray={`${2 * Math.PI * 22}`}
+                  strokeDashoffset={`${2 * Math.PI * 22 * (1 - Math.max(0.12, completionPercentage / 100))}`}
+                  strokeLinecap="round"
+                />
+              </Svg>
+              <View style={styles.questEmblemInnerIcon}>
+                <Ionicons
+                  name={completionPercentage === 100 ? 'trophy' : 'flame'}
+                  size={22}
+                  color={theme.tint}
+                />
               </View>
+            </View>
+
+            <View style={styles.dailyQuestContent}>
               <Text style={[styles.dailyQuestQuote, { color: theme.text }]}>
                 {t('dailyPeakQuote')}
               </Text>
-              <View
+              <Text style={[styles.questDirectiveSub, { color: theme.textSecondary }]}>
+                Complete {activeDay.name} to advance your rank & streak.
+              </Text>
+            </View>
+          </View>
+
+          {/* Bottom 3-Pill Live Telemetry Strip */}
+          <View
+            style={[
+              styles.questStatsFooter,
+              {
+                backgroundColor: theme.cardSecondary,
+                borderColor: theme.border,
+              },
+            ]}
+          >
+            <View style={styles.questStatItem}>
+              <Ionicons name="flame" size={14} color="#F59E0B" />
+              <Text style={[styles.questStatValue, { color: theme.text }]}>
+                {hunter?.streak_days ?? 4} {t('days')}
+              </Text>
+              <Text style={[styles.questStatLabel, { color: theme.textSecondary }]}>
+                Streak
+              </Text>
+            </View>
+
+            <View style={[styles.questStatDivider, { backgroundColor: theme.border }]} />
+
+            <View style={styles.questStatItem}>
+              <Ionicons name="barbell" size={14} color={theme.tint} />
+              <Text style={[styles.questStatValue, { color: theme.text }]}>
+                {completedSetsCount}/{totalSetsCount}
+              </Text>
+              <Text style={[styles.questStatLabel, { color: theme.textSecondary }]}>
+                Sets
+              </Text>
+            </View>
+
+            <View style={[styles.questStatDivider, { backgroundColor: theme.border }]} />
+
+            <View style={styles.questStatItem}>
+              <Ionicons
+                name={completionPercentage === 100 ? 'checkmark-circle' : 'flash'}
+                size={14}
+                color={completionPercentage === 100 ? theme.success : theme.tint}
+              />
+              <Text
                 style={[
-                  styles.streakPill,
-                  {
-                    backgroundColor: 'rgba(245, 158, 11, 0.15)',
-                    borderColor: '#F59E0B55',
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 5,
-                  },
+                  styles.questStatValue,
+                  { color: completionPercentage === 100 ? theme.success : theme.tint },
                 ]}
               >
-                <Ionicons name="flame-outline" size={13} color="#F97316" />
-                <Text style={styles.streakPillText}>
-                  {t('hunterStreak')}: {hunter?.streak_days ?? 1} {t('days')}
-                </Text>
-              </View>
+                {completionPercentage === 100 ? 'Cleared' : 'Active'}
+              </Text>
             </View>
           </View>
         </View>
 
-        {/* 3. SPLIT SELECTOR CARD: Dynamically shows selected program title and days */}
+        {/* 3. SPLIT SELECTOR CARD: Dynamically shows selected program title, metadata chips, and days */}
         <View
           style={[
             styles.splitSelectorCard,
-            { backgroundColor: theme.card, borderColor: theme.borderRose },
+            { backgroundColor: theme.card, borderColor: theme.border },
           ]}
         >
+          <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
+            <Defs>
+              <LinearGradient id="splitTopGlow" x1="0" y1="0" x2="1" y2="1">
+                <Stop offset="0%" stopColor={theme.tint} stopOpacity="0.14" />
+                <Stop offset="60%" stopColor={theme.tint} stopOpacity="0.02" />
+                <Stop offset="100%" stopColor={theme.tint} stopOpacity="0" />
+              </LinearGradient>
+            </Defs>
+            <Rect x="0" y="0" width="100%" height="100%" rx="20" fill="url(#splitTopGlow)" />
+          </Svg>
+
           {/* Day Navigation Header */}
           <View style={styles.splitNavHeader}>
             <View style={styles.splitNavLeft}>
@@ -376,9 +571,13 @@ export default function HomeScreen() {
               <View
                 style={[
                   styles.splitBadgePill,
-                  { backgroundColor: theme.cardSecondary, borderColor: theme.border },
+                  {
+                    backgroundColor: `${theme.tint}16`,
+                    borderColor: `${theme.tint}40`,
+                  },
                 ]}
               >
+                <Ionicons name="calendar-outline" size={11} color={theme.tint} />
                 <Text style={[styles.splitBadgeText, { color: theme.tint }]}>
                   {activeDay.dayBadge}
                 </Text>
@@ -398,15 +597,83 @@ export default function HomeScreen() {
               </SmoothPressable>
             </View>
 
-            <Text style={[styles.splitPercentText, { color: theme.tint }]}>
-              {completionPercentage}%
-            </Text>
+            <View
+              style={[
+                styles.percentBadgePill,
+                {
+                  backgroundColor:
+                    completionPercentage === 100 ? `${theme.success}20` : `${theme.tint}18`,
+                  borderColor:
+                    completionPercentage === 100 ? `${theme.success}55` : `${theme.tint}45`,
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.percentDot,
+                  {
+                    backgroundColor:
+                      completionPercentage === 100 ? theme.success : theme.tint,
+                  },
+                ]}
+              />
+              <Text
+                style={[
+                  styles.splitPercentText,
+                  {
+                    color: completionPercentage === 100 ? theme.success : theme.tint,
+                  },
+                ]}
+              >
+                {completionPercentage}%
+              </Text>
+            </View>
           </View>
 
-          {/* Main Program Title (dynamically updates with active program) */}
+          {/* Main Program Title */}
           <Text style={[styles.splitMainTitle, { color: theme.text }]}>
             {currentProgram.title}
           </Text>
+
+          {/* Tactical Protocol Metadata Chips Row */}
+          <View style={styles.splitMetaChipsRow}>
+            <View
+              style={[
+                styles.splitMetaChip,
+                { backgroundColor: theme.cardSecondary, borderColor: theme.border },
+              ]}
+            >
+              <Ionicons name="time-outline" size={12} color={theme.tint} />
+              <Text style={[styles.splitMetaChipText, { color: theme.textSecondary }]}>
+                ~45 Min
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.splitMetaChip,
+                { backgroundColor: theme.cardSecondary, borderColor: theme.border },
+              ]}
+            >
+              <Ionicons name="layers-outline" size={12} color={theme.tint} />
+              <Text style={[styles.splitMetaChipText, { color: theme.textSecondary }]}>
+                {groupedExercises.length} Exercises • {totalSetsCount} Sets
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.splitMetaChip,
+                { backgroundColor: theme.cardSecondary, borderColor: theme.border },
+              ]}
+            >
+              <Ionicons name="fitness-outline" size={12} color={theme.tint} />
+              <Text
+                style={[styles.splitMetaChipText, { color: theme.textSecondary }]}
+                numberOfLines={1}
+              >
+                {activeDay.focus}
+              </Text>
+            </View>
+          </View>
 
           {/* DYNAMIC TABS: side-by-side equal width for <= 3 days; horizontal scroll for > 3 days */}
           {splitDays.length <= 3 ? (
@@ -419,7 +686,16 @@ export default function HomeScreen() {
                     onPress={() => setSelectedDayIdx(idx)}
                     style={[
                       styles.dayTabPill,
-                      isSelected ? styles.dayTabPillActive : styles.dayTabPillInactive,
+                      isSelected
+                        ? [
+                            styles.dayTabPillActive,
+                            {
+                              backgroundColor: theme.tint,
+                              borderColor: theme.tint,
+                              shadowColor: theme.glow,
+                            },
+                          ]
+                        : styles.dayTabPillInactive,
                     ]}
                     accessibilityRole="tab"
                     accessibilityState={{ selected: isSelected }}
@@ -454,7 +730,16 @@ export default function HomeScreen() {
                     onPress={() => setSelectedDayIdx(idx)}
                     style={[
                       styles.scrollTabPill,
-                      isSelected ? styles.dayTabPillActive : styles.dayTabPillInactive,
+                      isSelected
+                        ? [
+                            styles.dayTabPillActive,
+                            {
+                              backgroundColor: theme.tint,
+                              borderColor: theme.tint,
+                              shadowColor: theme.glow,
+                            },
+                          ]
+                        : styles.dayTabPillInactive,
                     ]}
                     accessibilityRole="tab"
                     accessibilityState={{ selected: isSelected }}
@@ -475,14 +760,27 @@ export default function HomeScreen() {
             </ScrollView>
           )}
 
-          {/* Bottom Progress Bar Line */}
-          <View style={[styles.progressBarTrack, { backgroundColor: theme.cardSecondary }]}>
-            <View
-              style={[
-                styles.progressBarFill,
-                { width: `${completionPercentage}%`, backgroundColor: '#EF4444' },
-              ]}
-            />
+          {/* Bottom Progress Bar with Label */}
+          <View style={styles.progressFooterWrap}>
+            <View style={styles.progressLabelRow}>
+              <Text style={[styles.progressLabelText, { color: theme.textSecondary }]}>
+                Session Progress
+              </Text>
+              <Text style={[styles.progressCountText, { color: theme.text }]}>
+                {completedSetsCount} of {totalSetsCount} sets completed
+              </Text>
+            </View>
+            <View style={[styles.progressBarTrack, { backgroundColor: theme.cardSecondary }]}>
+              <View
+                style={[
+                  styles.progressBarFill,
+                  {
+                    width: `${Math.max(4, completionPercentage)}%`,
+                    backgroundColor: theme.tint,
+                  },
+                ]}
+              />
+            </View>
           </View>
         </View>
 
@@ -496,36 +794,123 @@ export default function HomeScreen() {
               {t('targetMuscles')}: {activeDay.focus}
             </Text>
           </View>
-          <Text style={[styles.setsDoneCounter, { color: theme.textSecondary }]}>
-            {completedSetsCount} / {totalSetsCount} {t('setsDone')}
-          </Text>
+          <View
+            style={[
+              styles.setsCounterPill,
+              {
+                backgroundColor: `${theme.tint}16`,
+                borderColor: `${theme.tint}40`,
+              },
+            ]}
+          >
+            <Text style={[styles.setsDoneCounter, { color: theme.tint }]}>
+              {completedSetsCount}/{totalSetsCount} {t('setsDone')}
+            </Text>
+          </View>
         </View>
 
         {/* 5. EXERCISES LIST (loaded dynamically for the selected protocol day) */}
-        {groupedExercises.map((group) => {
+        {groupedExercises.map((group, groupIdx) => {
+          const groupCompleted = group.sets.filter((s) => s.completed).length;
+          const allGroupDone = groupCompleted === group.sets.length && group.sets.length > 0;
           return (
             <View
               key={group.name}
               style={[
                 styles.exerciseCard,
-                { backgroundColor: theme.card, borderColor: theme.borderRose },
+                {
+                  backgroundColor: theme.card,
+                  borderColor: allGroupDone ? `${theme.success}55` : theme.border,
+                },
               ]}
             >
-              {/* Exercise Header: Title and Guide pill placed right beside each other */}
-              <SmoothPressable
-                onPress={() => setGuideExercise(group.name)}
-                style={styles.exerciseHeaderAdjacentRow}
-                accessibilityRole="button"
-                accessibilityLabel={`Open exercise guide for ${group.name}`}
-                hitSlop={6}
-              >
-                <Text style={[styles.exerciseCardTitle, { color: theme.text }]}>
-                  {group.name}
-                </Text>
-                <View style={styles.guidePillAdjacentBadge}>
-                  <Text style={styles.guidePillText}>{t('guide')} ℹ️</Text>
+              {/* Exercise Header: Number Badge, Title, Target Guide Pill, and Set Counter */}
+              <View style={styles.exerciseCardTopRow}>
+                <SmoothPressable
+                  onPress={() => setGuideExercise(group.name)}
+                  style={styles.exerciseHeaderAdjacentRow}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open exercise guide for ${group.name}`}
+                  hitSlop={6}
+                >
+                  <View
+                    style={[
+                      styles.exerciseNumBadge,
+                      {
+                        backgroundColor: allGroupDone
+                          ? `${theme.success}20`
+                          : `${theme.tint}1C`,
+                        borderColor: allGroupDone
+                          ? `${theme.success}55`
+                          : `${theme.tint}45`,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.exerciseNumText,
+                        { color: allGroupDone ? theme.success : theme.tint },
+                      ]}
+                    >
+                      #{groupIdx + 1}
+                    </Text>
+                  </View>
+                  <Text style={[styles.exerciseCardTitle, { color: theme.text }]}>
+                    {group.name}
+                  </Text>
+                  <View
+                    style={[
+                      styles.guidePillAdjacentBadge,
+                      {
+                        backgroundColor: `${theme.tint}16`,
+                        borderColor: `${theme.tint}45`,
+                      },
+                    ]}
+                  >
+                    <Ionicons name="body-outline" size={12} color={theme.tint} />
+                    <Text style={[styles.guidePillText, { color: theme.tint }]}>
+                      {t('guide')}
+                    </Text>
+                  </View>
+                </SmoothPressable>
+
+                <View
+                  style={[
+                    styles.groupProgressBadge,
+                    {
+                      backgroundColor: allGroupDone
+                        ? `${theme.success}1E`
+                        : theme.cardSecondary,
+                      borderColor: allGroupDone ? `${theme.success}50` : theme.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.groupProgressText,
+                      { color: allGroupDone ? theme.success : theme.textSecondary },
+                    ]}
+                  >
+                    {groupCompleted}/{group.sets.length}
+                  </Text>
                 </View>
-              </SmoothPressable>
+              </View>
+
+              {/* Table Column Header Strip (100% Pantay Alignment) */}
+              <View style={styles.setTableHeaderRow}>
+                <View style={styles.colSet}>
+                  <Text style={[styles.colHeaderText, { color: theme.textDim }]}>SET</Text>
+                </View>
+                <View style={styles.colWeight}>
+                  <Text style={[styles.colHeaderText, { color: theme.textDim }]}>KG</Text>
+                </View>
+                <View style={styles.colReps}>
+                  <Text style={[styles.colHeaderText, { color: theme.textDim }]}>REPS</Text>
+                </View>
+                <View style={styles.colAction}>
+                  <Ionicons name="checkmark-sharp" size={13} color={theme.textDim} />
+                </View>
+              </View>
 
               {/* Set Rows */}
               {group.sets.map((setItem) => {
@@ -536,23 +921,41 @@ export default function HomeScreen() {
                     style={[
                       styles.setRow,
                       {
-                        backgroundColor: isDone ? `${theme.tint}14` : 'transparent',
-                        borderColor: isDone ? `${theme.tint}40` : 'transparent',
+                        backgroundColor: isDone ? `${theme.tint}14` : 'rgba(255, 255, 255, 0.02)',
+                        borderColor: isDone ? `${theme.tint}40` : 'rgba(255, 255, 255, 0.06)',
                       },
                     ]}
                   >
-                    <Text style={[styles.setLabelText, { color: theme.textSecondary }]}>
-                      SET {setItem.set_number}
-                    </Text>
+                    {/* Col 1: Set Number Badge */}
+                    <View style={styles.colSet}>
+                      <View
+                        style={[
+                          styles.setNumberBadge,
+                          {
+                            backgroundColor: isDone ? theme.tint : theme.cardSecondary,
+                            borderColor: isDone ? theme.tint : theme.border,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.setNumberText,
+                            { color: isDone ? '#FFFFFF' : theme.textSecondary },
+                          ]}
+                        >
+                          {setItem.set_number}
+                        </Text>
+                      </View>
+                    </View>
 
-                    {/* Weight (KG) Input */}
-                    <View style={styles.setInputGroup}>
+                    {/* Col 2: Weight (KG) Input Box */}
+                    <View style={styles.colWeight}>
                       <TextInput
                         style={[
                           styles.numInputBox,
                           {
                             backgroundColor: theme.cardSecondary,
-                            borderColor: theme.border,
+                            borderColor: isDone ? `${theme.tint}55` : theme.border,
                             color: theme.text,
                           },
                         ]}
@@ -562,17 +965,16 @@ export default function HomeScreen() {
                         maxLength={5}
                         selectTextOnFocus
                       />
-                      <Text style={[styles.inputUnitLabel, { color: theme.textSecondary }]}>KG</Text>
                     </View>
 
-                    {/* Reps Input */}
-                    <View style={styles.setInputGroup}>
+                    {/* Col 3: Reps Input Box */}
+                    <View style={styles.colReps}>
                       <TextInput
                         style={[
                           styles.numInputBox,
                           {
                             backgroundColor: theme.cardSecondary,
-                            borderColor: theme.border,
+                            borderColor: isDone ? `${theme.tint}55` : theme.border,
                             color: theme.text,
                           },
                         ]}
@@ -582,29 +984,32 @@ export default function HomeScreen() {
                         maxLength={4}
                         selectTextOnFocus
                       />
-                      <Text style={[styles.inputUnitLabel, { color: theme.textSecondary }]}>
-                        REPS
-                      </Text>
                     </View>
 
-                    {/* Completion Checkbox */}
-                    <SmoothPressable
-                      onPress={() => handleToggleSet(setItem)}
-                      style={[
-                        styles.checkboxBtn,
-                        {
-                          backgroundColor: isDone ? theme.tint : theme.cardSecondary,
-                          borderColor: isDone ? theme.tint : theme.border,
-                          shadowColor: isDone ? theme.tint : 'transparent',
-                        },
-                      ]}
-                      accessibilityRole="checkbox"
-                      accessibilityState={{ checked: isDone }}
-                      accessibilityLabel={`Set ${setItem.set_number} ${isDone ? 'completed' : 'incomplete'}`}
-                      hitSlop={6}
-                    >
-                      {isDone && <Ionicons name="checkmark" size={17} color="#FFFFFF" />}
-                    </SmoothPressable>
+                    {/* Col 4: Completion Checkbox */}
+                    <View style={styles.colAction}>
+                      <SmoothPressable
+                        onPress={() => handleToggleSet(setItem)}
+                        style={[
+                          styles.checkboxBtn,
+                          {
+                            backgroundColor: isDone ? theme.tint : theme.cardSecondary,
+                            borderColor: isDone ? theme.tint : theme.border,
+                            shadowColor: isDone ? theme.tint : 'transparent',
+                          },
+                        ]}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: isDone }}
+                        accessibilityLabel={`Set ${setItem.set_number} ${isDone ? 'completed' : 'incomplete'}`}
+                        hitSlop={6}
+                      >
+                        {isDone ? (
+                          <Ionicons name="checkmark" size={17} color="#FFFFFF" />
+                        ) : (
+                          <Ionicons name="checkmark" size={13} color="rgba(255, 255, 255, 0.15)" />
+                        )}
+                      </SmoothPressable>
+                    </View>
                   </View>
                 );
               })}
@@ -646,6 +1051,22 @@ export default function HomeScreen() {
         onClose={() => setAwakeningOpen(false)}
         onSave={() => loadProfile()}
       />
+
+      {/* WORKOUT CALENDAR & HISTORY DISPATCH MODAL */}
+      <WorkoutCalendarModal
+        visible={calendarOpen}
+        onClose={() => setCalendarOpen(false)}
+        onSelectDate={setSelectedCalendarDate}
+        streakDays={hunter?.streak_days ?? 4}
+      />
+
+      {/* PLAYER HIERARCHY & RANK PROGRESSION VAULT MODAL */}
+      <RankUnlockVaultModal
+        visible={vaultOpen}
+        profile={hunter}
+        initialTab="ranks"
+        onClose={() => setVaultOpen(false)}
+      />
     </View>
   );
 }
@@ -681,6 +1102,16 @@ const styles = StyleSheet.create({
     padding: 2,
     borderWidth: 1.5,
   },
+  onlineDot: {
+    position: 'absolute',
+    bottom: 1,
+    right: 1,
+    width: 11,
+    height: 11,
+    borderRadius: 5.5,
+    borderWidth: 2,
+    borderColor: '#08080B',
+  },
   topAvatarCircle: {
     width: 44,
     height: 44,
@@ -709,25 +1140,45 @@ const styles = StyleSheet.create({
     fontSize: 19,
     fontWeight: '900',
     letterSpacing: 0.2,
-    maxWidth: '75%',
+    maxWidth: '72%',
   },
   rankBadge: {
     paddingHorizontal: 7,
     paddingVertical: 2,
-    borderRadius: 5,
+    borderRadius: 6,
   },
   rankBadgeText: {
     fontFamily: 'Poppins-Bold',
     color: '#FFFFFF',
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: '900',
     letterSpacing: 0.6,
   },
+  levelSubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    marginTop: 4,
+  },
+  levelBadgeText: {
+    fontFamily: 'Poppins-Bold',
+    fontSize: 11.5,
+    fontWeight: '800',
+  },
+  miniExpTrack: {
+    width: 58,
+    height: 5,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  miniExpFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
   topQuestSubtitle: {
     fontFamily: 'Poppins-Medium',
-    fontSize: 13,
+    fontSize: 11.5,
     fontWeight: '600',
-    marginTop: 2,
   },
   topHunterActions: {
     flexDirection: 'row',
@@ -745,84 +1196,128 @@ const styles = StyleSheet.create({
 
   // 2. DAILY PEAK QUEST CARD
   dailyQuestCard: {
-    borderRadius: 18,
-    borderWidth: 1.2,
+    borderRadius: 20,
+    borderWidth: 1,
     padding: 16,
     marginBottom: 14,
-    shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 12,
-    shadowOpacity: 0.45,
-    elevation: 3,
+    overflow: 'hidden',
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 18,
+    shadowOpacity: 0.35,
+    elevation: 5,
+  },
+  questCardTopHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  questTagPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  questRewardBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  questRewardText: {
+    fontFamily: 'Poppins-Bold',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.4,
   },
   dailyQuestRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
+    marginBottom: 14,
   },
-  dailyQuestAvatarWrap: {
+  questEmblemBox: {
     width: 58,
     height: 58,
-    borderRadius: 29,
-    borderWidth: 2,
-    overflow: 'hidden',
-    shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 10,
-    shadowOpacity: 0.7,
-    elevation: 4,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  dailyQuestAvatarImg: {
-    width: '100%',
-    height: '100%',
+  questEmblemInnerIcon: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   dailyQuestContent: {
     flex: 1,
   },
-  dailyQuestTagRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
   dailyQuestTag: {
+    fontFamily: 'Poppins-Bold',
     fontSize: 11,
     fontWeight: '900',
     letterSpacing: 0.8,
   },
   dailyQuestQuote: {
+    fontFamily: 'Poppins-SemiBold',
     fontSize: 14,
     fontWeight: '700',
     fontStyle: 'italic',
-    lineHeight: 19,
-    marginBottom: 8,
+    lineHeight: 20,
+    marginBottom: 4,
   },
-  streakPill: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 12,
+  questDirectiveSub: {
+    fontFamily: 'Poppins-Medium',
+    fontSize: 11.5,
+    fontWeight: '500',
+  },
+  questStatsFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    borderRadius: 13,
     borderWidth: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
   },
-  streakPillText: {
-    color: '#F59E0B',
+  questStatItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  questStatValue: {
+    fontFamily: 'Poppins-Bold',
     fontSize: 12,
     fontWeight: '800',
+  },
+  questStatLabel: {
+    fontFamily: 'Poppins-Medium',
+    fontSize: 11,
+  },
+  questStatDivider: {
+    width: 1,
+    height: 14,
   },
 
   // 3. SPLIT SELECTOR CARD
   splitSelectorCard: {
-    borderRadius: 18,
-    borderWidth: 1.2,
+    borderRadius: 20,
+    borderWidth: 1,
     padding: 16,
     marginBottom: 16,
-    shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 12,
-    shadowOpacity: 0.45,
-    elevation: 3,
+    overflow: 'hidden',
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 18,
+    shadowOpacity: 0.35,
+    elevation: 4,
   },
   splitNavHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   splitNavLeft: {
     flexDirection: 'row',
@@ -830,33 +1325,73 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   navArrowBtn: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   splitBadgePill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
     borderWidth: 1,
   },
   splitBadgeText: {
-    fontSize: 12,
+    fontFamily: 'Poppins-Bold',
+    fontSize: 11.5,
     fontWeight: '800',
     letterSpacing: 0.5,
   },
+  percentBadgePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  percentDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
   splitPercentText: {
-    fontSize: 16,
+    fontFamily: 'Poppins-Bold',
+    fontSize: 13.5,
     fontWeight: '900',
   },
   splitMainTitle: {
+    fontFamily: 'Poppins-Bold',
     fontSize: 21,
     fontWeight: '900',
-    marginBottom: 12,
-    letterSpacing: 0.2,
+    marginBottom: 10,
+    letterSpacing: 0.1,
+  },
+  splitMetaChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 14,
+  },
+  splitMetaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  splitMetaChipText: {
+    fontFamily: 'Poppins-Medium',
+    fontSize: 11,
+    fontWeight: '600',
   },
   threeTabsRow: {
     flexDirection: 'row',
@@ -873,14 +1408,14 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 9,
     paddingHorizontal: 4,
-    borderRadius: 20,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
   scrollTabPill: {
     paddingVertical: 9,
     paddingHorizontal: 14,
-    borderRadius: 20,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -891,13 +1426,13 @@ const styles = StyleSheet.create({
     shadowColor: '#F97316',
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 8,
-    shadowOpacity: 0.8,
+    shadowOpacity: 0.65,
     elevation: 5,
   },
   dayTabPillInactive: {
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderColor: 'rgba(255, 255, 255, 0.10)',
   },
   dayTabPillText: {
     fontSize: 12.5,
@@ -911,15 +1446,32 @@ const styles = StyleSheet.create({
     color: '#B7AAB0',
     fontWeight: '700',
   },
+  progressFooterWrap: {
+    gap: 6,
+  },
+  progressLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  progressLabelText: {
+    fontFamily: 'Poppins-Medium',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  progressCountText: {
+    fontFamily: 'Poppins-SemiBold',
+    fontSize: 11,
+    fontWeight: '700',
+  },
   progressBarTrack: {
-    height: 4,
-    borderRadius: 2,
+    height: 6,
+    borderRadius: 3,
     overflow: 'hidden',
-    marginTop: 2,
   },
   progressBarFill: {
     height: '100%',
-    borderRadius: 2,
+    borderRadius: 3,
   },
 
   // 4. PROTOCOL SECTION HEADER
@@ -930,102 +1482,178 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   protocolMainTitle: {
-    fontSize: 19.5,
-    fontWeight: '900',
+    fontFamily: 'Poppins-Bold',
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: -0.4,
   },
   protocolSubTitle: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontFamily: 'Poppins-Regular',
+    fontSize: 12.5,
     marginTop: 2,
   },
+  setsCounterPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
   setsDoneCounter: {
-    fontSize: 14,
+    fontFamily: 'Poppins-Bold',
+    fontSize: 12.5,
     fontWeight: '800',
   },
 
   // 5. EXERCISE CARD
   exerciseCard: {
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1.2,
     padding: 14,
     marginBottom: 14,
-    shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 10,
-    shadowOpacity: 0.35,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    shadowOpacity: 0.25,
+    elevation: 3,
+  },
+  exerciseCardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.06)',
+    gap: 8,
   },
   exerciseHeaderAdjacentRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 12,
-    alignSelf: 'flex-start',
+    flex: 1,
     flexWrap: 'wrap',
   },
+  exerciseNumBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  exerciseNumText: {
+    fontFamily: 'Poppins-Bold',
+    fontSize: 11,
+    fontWeight: '800',
+  },
   exerciseCardTitle: {
-    fontSize: 17.5,
+    fontFamily: 'Poppins-Bold',
+    fontSize: 16.5,
+    fontWeight: '800',
+  },
+  groupProgressBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 3.5,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  groupProgressText: {
+    fontFamily: 'Poppins-Bold',
+    fontSize: 11,
     fontWeight: '800',
   },
   guidePillAdjacentBadge: {
-    backgroundColor: 'rgba(245, 158, 11, 0.15)',
-    borderColor: '#F59E0B',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     borderWidth: 1,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
   },
   guidePillText: {
-    color: '#F59E0B',
-    fontSize: 12,
+    fontFamily: 'Poppins-Bold',
+    fontSize: 11,
     fontWeight: '800',
   },
 
-  // SET ROW
+  // SET TABLE & ROWS (100% Pantay Structured Columns)
+  setTableHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    marginBottom: 4,
+  },
+  colHeaderText: {
+    fontFamily: 'Poppins-Bold',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    textAlign: 'center',
+  },
+  colSet: {
+    width: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  colWeight: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  colReps: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  colAction: {
+    width: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   setRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 6,
+    paddingVertical: 5,
     paddingHorizontal: 8,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
     marginBottom: 6,
   },
-  setLabelText: {
-    fontSize: 13,
-    fontWeight: '800',
-    width: 48,
-  },
-  setInputGroup: {
-    flexDirection: 'row',
+  setNumberBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    borderWidth: 1,
     alignItems: 'center',
-    gap: 6,
+    justifyContent: 'center',
+  },
+  setNumberText: {
+    fontFamily: 'Poppins-Bold',
+    fontSize: 12.5,
+    fontWeight: '800',
   },
   numInputBox: {
-    width: 64,
+    width: '100%',
+    maxWidth: 92,
     height: 40,
     borderRadius: 10,
-    borderWidth: 1.5,
+    borderWidth: 1.2,
     textAlign: 'center',
     fontSize: 16,
-    fontWeight: '800',
+    fontFamily: 'Poppins-Bold',
+    fontWeight: '700',
     paddingVertical: 0,
   },
-  inputUnitLabel: {
-    fontSize: 12,
-    fontWeight: '800',
-    width: 38,
-  },
   checkboxBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+    width: 34,
+    height: 34,
+    borderRadius: 9,
     borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
     shadowOffset: { width: 0, height: 0 },
     shadowRadius: 6,
-    shadowOpacity: 0.6,
     elevation: 3,
   },
 

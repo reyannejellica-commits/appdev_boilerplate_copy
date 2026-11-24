@@ -8,8 +8,20 @@ import {
   Text,
   View,
 } from 'react-native';
-import Svg, { Circle, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
+import Svg, {
+  Circle,
+  Defs,
+  LinearGradient as SvgGradient,
+  RadialGradient,
+  Rect,
+  Stop,
+} from 'react-native-svg';
+import { NotificationBellButton } from '@/components/NotificationModal';
 import { PrimeAwakeningModal } from '@/components/PrimeAwakeningModal';
+import {
+  RankUnlockVaultModal,
+  type UnlockableFeature,
+} from '@/components/RankUnlockVaultModal';
 import { SmoothPressable } from '@/components/SmoothPressable';
 import {
   addHunterExp,
@@ -80,6 +92,43 @@ export default function StatsScreen() {
   const [unlockedItems, setUnlockedItems] = useState<string[]>([]);
   const [auraActive, setAuraActive] = useState<boolean>(false);
   const [awakeningOpen, setAwakeningOpen] = useState<boolean>(false);
+  const [vaultOpen, setVaultOpen] = useState<boolean>(false);
+
+  const handleUnlockVaultFeature = async (feature: UnlockableFeature) => {
+    const currentCoins = profile?.coins ?? 190;
+    if (currentCoins < feature.cost) {
+      playAlertSound('beep');
+      showMessage(
+        'INSUFFICIENT COINS',
+        `You need ${feature.cost} Coins to unlock "${feature.title}". Complete workouts and cardio runs to earn more!`
+      );
+      return;
+    }
+
+    const ok = await spendHunterCoins(feature.cost);
+    if (!ok) {
+      showMessage('TRANSACTION FAILED', 'Unable to deduct coins. Please try again.');
+      return;
+    }
+
+    await unlockShopItem(feature.id);
+    playAlertSound('chime');
+
+    if (feature.id === 'shadow_aura') {
+      setAuraActive(true);
+      showMessage('FEATURE UNLOCKED!', 'Shadow Monarch Aura is now active on your profile!');
+    } else if (feature.id === 'recovery_elixir') {
+      await addHunterExp(50);
+      showMessage('ELIXIR CONSUMED!', '+50 Hunter EXP added toward your next rank!');
+    } else if (feature.id === 'double_xp') {
+      await addHunterExp(250);
+      showMessage('OVERDRIVE SURGE!', '+250 Hunter EXP added toward your next rank!');
+    } else {
+      showMessage('FEATURE UNLOCKED!', `"${feature.title}" is now permanently unlocked on your account!`);
+    }
+
+    await loadAllStats();
+  };
 
   const currentAvatar = useMemo(() => getAvatarById(settings.avatarId), [settings.avatarId]);
 
@@ -183,7 +232,7 @@ export default function StatsScreen() {
     await loadAllStats();
   };
 
-  const userRank = (profile?.rank || 'B-Rank').toUpperCase().replace('-RANK', '');
+  const userRank = (profile?.rank || 'E-Rank').toUpperCase().replace('-RANK', '');
 
   // SVG Circular Radial parameters
   const circleSize = 104;
@@ -234,7 +283,7 @@ export default function StatsScreen() {
           <View style={styles.headerInfo}>
             <View style={styles.nameRankRow}>
               <Text style={[styles.hunterName, { color: theme.text }]} numberOfLines={1}>
-                {settings.nickname || 'John Mark Dalumpienes'}
+                {settings.nickname || profile?.hunter_name || 'Athlete'}
               </Text>
               <View style={[styles.rankBadge, { backgroundColor: theme.tint }]}>
                 <Text style={styles.rankBadgeText}>{userRank}-RANK</Text>
@@ -247,6 +296,7 @@ export default function StatsScreen() {
         </SmoothPressable>
 
         <View style={styles.topHunterActions}>
+          <NotificationBellButton streakDays={profile?.streak_days ?? 4} />
           <SmoothPressable
             onPress={() => router.push('/settings')}
             style={[
@@ -484,17 +534,31 @@ export default function StatsScreen() {
           </View>
         </View>
 
-        {/* 5. PLAYER HIERARCHY CARD */}
-        <View
+        {/* 5. INTERACTIVE PLAYER HIERARCHY CARD (Tap to open Rank & Coin Unlock Vault) */}
+        <SmoothPressable
+          onPress={() => setVaultOpen(true)}
           style={[
             styles.hierarchyCard,
             {
               backgroundColor: theme.card,
-              borderColor: theme.borderRose,
+              borderColor: `${theme.tint}55`,
               shadowColor: theme.glow,
+              overflow: 'hidden',
             },
           ]}
+          accessibilityRole="button"
+          accessibilityLabel="Open Rank Requirements and Coin Feature Unlocks"
         >
+          <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
+            <Defs>
+              <RadialGradient id="rankCardGlow" cx="15%" cy="15%" rx="85%" ry="90%">
+                <Stop offset="0%" stopColor={theme.tint} stopOpacity="0.22" />
+                <Stop offset="100%" stopColor={theme.tint} stopOpacity="0" />
+              </RadialGradient>
+            </Defs>
+            <Rect x="0" y="0" width="100%" height="100%" rx="22" fill="url(#rankCardGlow)" />
+          </Svg>
+
           <View style={styles.hierarchyTopRow}>
             <View style={styles.hierarchyTagRow}>
               <Ionicons name="hourglass-outline" size={14} color={theme.tint} style={{ marginRight: 6 }} />
@@ -503,24 +567,54 @@ export default function StatsScreen() {
               </Text>
             </View>
 
-            <View style={styles.coinsDisplayRow}>
-              <Ionicons name="disc" size={16} color="#FBBF24" style={{ marginRight: 5 }} />
+            <View
+              style={[
+                styles.coinsDisplayRow,
+                {
+                  backgroundColor: 'rgba(251, 191, 36, 0.14)',
+                  borderColor: 'rgba(251, 191, 36, 0.40)',
+                  borderWidth: 1,
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                  borderRadius: 12,
+                },
+              ]}
+            >
+              <Ionicons name="disc" size={15} color="#FBBF24" style={{ marginRight: 5 }} />
               <Text style={styles.coinsDisplayText}>
-                {profile?.coins ?? 190} {t('coins')}
+                {profile?.coins ?? 50} {t('coins')}
               </Text>
             </View>
           </View>
 
-          <Text style={[styles.rankInitiateTitle, { color: theme.text }]}>
-            {userRank}-RANK INITIATE
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <Text style={[styles.rankInitiateTitle, { color: theme.text }]}>
+              {userRank}-RANK INITIATE
+            </Text>
+            {unlockedItems.includes('golden_title') && (
+              <View
+                style={{
+                  backgroundColor: 'rgba(251, 191, 36, 0.18)',
+                  borderColor: '#FBBF24',
+                  borderWidth: 1,
+                  paddingHorizontal: 8,
+                  paddingVertical: 2,
+                  borderRadius: 7,
+                }}
+              >
+                <Text style={{ color: '#FBBF24', fontSize: 10, fontWeight: '900', letterSpacing: 0.6 }}>
+                  ★ SHADOW SOVEREIGN
+                </Text>
+              </View>
+            )}
+          </View>
 
           <View style={styles.xpRow}>
             <Text style={[styles.xpCurrentText, { color: theme.text }]}>
-              {profile?.exp ?? 340} XP
+              {profile?.exp ?? 0} XP
             </Text>
             <Text style={[styles.xpTargetText, { color: theme.textSecondary }]}>
-              {profile?.max_exp ?? 1000} {t('xpToNextRank')}
+              {profile?.max_exp ?? 100} {t('xpToNextRank')}
             </Text>
           </View>
 
@@ -536,7 +630,7 @@ export default function StatsScreen() {
                     Math.max(
                       8,
                       Math.round(
-                        ((profile?.exp ?? 340) / (profile?.max_exp ?? 1000)) * 100
+                        ((profile?.exp ?? 0) / (profile?.max_exp ?? 100)) * 100
                       )
                     )
                   )}%`,
@@ -544,7 +638,54 @@ export default function StatsScreen() {
               ]}
             />
           </View>
-        </View>
+
+          {/* Interactive Vault Cue Footer */}
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginTop: 2,
+              paddingTop: 10,
+              borderTopWidth: StyleSheet.hairlineWidth,
+              borderTopColor: theme.border,
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name="key-outline" size={14} color={theme.tint} />
+              <Text style={{ color: theme.tint, fontSize: 12, fontWeight: '800' }}>
+                Tap to view Rank Requirements & Coin Feature Unlocks
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={theme.tint} />
+          </View>
+        </SmoothPressable>
+
+        {/* UNLOCKED FEATURE: ELITE CYBER ANALYTICS HUD (Unlocked via 150 Coins) */}
+        {unlockedItems.includes('cyber_hud') && (
+          <View
+            style={[
+              styles.hierarchyCard,
+              {
+                backgroundColor: theme.card,
+                borderColor: '#A855F755',
+              },
+            ]}
+          >
+            <View style={styles.hierarchyTopRow}>
+              <View style={styles.hierarchyTagRow}>
+                <Ionicons name="analytics" size={15} color="#A855F7" style={{ marginRight: 6 }} />
+                <Text style={[styles.hierarchyTagText, { color: '#A855F7' }]}>
+                  ELITE CYBER ANALYTICS HUD
+                </Text>
+              </View>
+              <Text style={{ color: '#34D399', fontSize: 11, fontWeight: '800' }}>UNLOCKED ✓</Text>
+            </View>
+            <Text style={{ color: theme.textSecondary, fontSize: 12.5, lineHeight: 18 }}>
+              Hypertrophy Volume Efficiency: 94% • Estimated Recovery Readiness: Optimal • Next Progressive Overload Window: Ready (+2.5kg).
+            </Text>
+          </View>
+        )}
 
         {/* 6. EXCHANGE - MONARCH SHOP CARD */}
         <View
@@ -632,6 +773,16 @@ export default function StatsScreen() {
         visible={awakeningOpen}
         onClose={() => setAwakeningOpen(false)}
         onSave={() => loadAllStats()}
+      />
+
+      {/* Interactive Rank Requirements & Coin Unlock Vault Modal */}
+      <RankUnlockVaultModal
+        visible={vaultOpen}
+        profile={profile}
+        unlockedIds={unlockedItems}
+        initialTab="ranks"
+        onClose={() => setVaultOpen(false)}
+        onUnlockFeature={handleUnlockVaultFeature}
       />
     </View>
   );
